@@ -34,6 +34,12 @@ awaitPlayerDone KEYWORD2
 playBuiltinAudio KEYWORD2
 onReady KEYWORD2
 onVolumeCb KEYWORD2
+getLocalTimeStr KEYWORD2
+onNetDelay KEYWORD2
+disabledWakeup KEYWORD2
+enabledWakeup KEYWORD2
+onSetClock KEYWORD2
+onClearClockCb KEYWORD2
  
 #constant (LITERAL1)
 #none

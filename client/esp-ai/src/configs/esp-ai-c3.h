@@ -64,7 +64,7 @@
 
 // #define WAKEUP_SCHEME DEFAULT_WAKEUP_SCHEME
 #define WAKEUP_SCHEME "pin_low"
-
+ 
 
 // ESP-AI 蝴蝶结特殊宏定义
 // #define IS_BOWKNOT

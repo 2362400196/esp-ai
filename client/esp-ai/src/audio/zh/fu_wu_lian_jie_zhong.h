@@ -1,4 +1,6 @@
 #pragma once
-
+#include "USER_CONFIG.h"
+#if defined(ESP_AI_LANGUAGE_ZH)
 extern const unsigned char fu_wu_lian_jie_zhong[];
 extern const unsigned int fu_wu_lian_jie_zhong_len;
+#endif

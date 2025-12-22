@@ -26,9 +26,14 @@
 
 #include <Arduino.h>
 #include <functional>
-#include "../configs/common.h"
+// #include "../configs/common.h" 
+#include "../configs/main.h" 
+#include "USER_CONFIG.h"
+#if defined(ESP_AI_LANGUAGE_EN)
+#include "../audio/en/hui_fu_chu_chang.h"
+#elif defined(ESP_AI_LANGUAGE_ZH)
 #include "../audio/zh/hui_fu_chu_chang.h"
-
+#endif
 struct OnRepeatedlyClickContext
 {  
     bool *debug;

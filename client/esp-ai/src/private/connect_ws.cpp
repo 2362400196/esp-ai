@@ -47,7 +47,6 @@ void ESP_AI::connect_ws()
     String loc_ext6 = get_local_data("ext6");
     String loc_ext7 = get_local_data("ext7");
 
-
     // size_t freeHeap = ESP.getFreeHeap() / 1024;
     // Serial.print("剩余内存：");
     // Serial.println(freeHeap);
@@ -91,7 +90,7 @@ void ESP_AI::connect_ws()
 
 #if defined(LITTLE_ROM)
     real_path += ("&LITTLE_ROM=1");
-#endif 
+#endif
     // 增加设备缓存能力参数
     real_path += ("&AUDIO_BUFFER_SIZE=" + String(AUDIO_BUFFER_SIZE));
     if (server_config.params)
@@ -107,10 +106,44 @@ void ESP_AI::connect_ws()
     DEBUG_PRINT(debug, " ");
     DEBUG_PRINT(debug, server_config.path);
     DEBUG_PRINT(debug, " ");
-    DEBUG_PRINT(debug, server_config.params); 
+    DEBUG_PRINT(debug, server_config.params);
     DEBUG_PRINT(debug, " ");
-    DEBUG_PRINTLN(debug, real_path); 
+    DEBUG_PRINTLN(debug, real_path);
 
+    // test...
+#if defined(USE_4G_MODULE)
+    esp_ai_webSocket.onEvent([this](EAN_WStype_t type, uint8_t *payload, size_t length)
+                             {
+        // 将库内部的 EAN_WStype_t 转换为外层使用的 WStype_t 并转发给成员函数
+        WStype_t wstype;
+        switch (type)
+        {
+        case EAN_WStype_DISCONNECTED:
+            wstype = WStype_DISCONNECTED;
+            break;
+        case EAN_WStype_CONNECTED: 
+            wstype = WStype_CONNECTED;
+            break;
+        case EAN_WStype_TEXT:
+            wstype = WStype_TEXT;
+            break;
+        case EAN_WStype_BIN:
+            wstype = WStype_BIN;
+            break;
+        case EAN_WStype_PING:
+            wstype = WStype_PING;
+            break;
+        case EAN_WStype_PONG:
+            wstype = WStype_PONG;
+            break;
+        default:
+            wstype = WStype_ERROR;
+            break;
+        }
+        this->webSocketEvent(wstype, payload, length); });
+
+    esp_ai_webSocket.connectWS(server_config.ip, server_config.port, real_path);
+#else
 #if defined(LITTLE_ROM)
     if (String(server_config.protocol) == "https")
     {
@@ -127,8 +160,29 @@ void ESP_AI::connect_ws()
         esp_ai_webSocket.begin(server_config.ip, server_config.port, real_path);
     }
 #endif
-
     esp_ai_webSocket.onEvent(std::bind(&ESP_AI::webSocketEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
     esp_ai_webSocket.setReconnectInterval(3000);
     esp_ai_webSocket.enableHeartbeat(5000, 10000, 0);
+#endif
+
+    // #if defined(LITTLE_ROM)
+    //     if (String(server_config.protocol) == "https")
+    //     {
+    //         DEBUG_PRINTLN(debug, F("[Error] 此开发板不支持 https 连接 ！"));
+    //     }
+    //     esp_ai_webSocket.begin(server_config.ip, server_config.port, real_path);
+    // #else
+    //     if (String(server_config.protocol) == "https")
+    //     {
+    //         esp_ai_webSocket.beginSSL(server_config.ip, server_config.port, real_path);
+    //     }
+    //     else
+    //     {
+    //         esp_ai_webSocket.begin(server_config.ip, server_config.port, real_path);
+    //     }
+    // #endif
+
+    //     esp_ai_webSocket.onEvent(std::bind(&ESP_AI::webSocketEvent, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+    //     esp_ai_webSocket.setReconnectInterval(3000);
+    //     esp_ai_webSocket.enableHeartbeat(5000, 10000, 0);
 }

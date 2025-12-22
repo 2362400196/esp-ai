@@ -52,10 +52,13 @@ void on_wakeup_task_static(void *arg)
 {
     OnWakeUpContext *ctx = static_cast<OnWakeUpContext *>(arg);
     long last_debounce_time = 0;
+    long last_debounce_time_pin2 = 0;
     int debounce_delay = 150;
     int prev_pin_state = 0;
+    int prev_pin_state_pin2 = 0;
     int prev_listen_state = 0;
     long btn_up_time = 0;
+
 
     while (true)
     {
@@ -82,7 +85,7 @@ void on_wakeup_task_static(void *arg)
                 prev_pin_state = reading;
             }
         }
-
+        
         // 方式二：串口唤醒（非 ASR 时）
         else if (!(*ctx->asr_ing) && (*ctx->wake_up_scheme == "asrpro" || *ctx->wake_up_scheme == "serial"))
         {
@@ -96,6 +99,50 @@ void on_wakeup_task_static(void *arg)
                     ctx->wakeUp("wakeup");
                 }
             }
+            //天问唤醒兼容BOOT按钮和三角按钮监听
+            // 第一个引脚的检测逻辑
+            #if defined(ARDUINO_ESP32S3_DEV)
+            int target_val1 = HIGH; // 第一个引脚固定监听低电平（可根据实际需求修改）
+            int reading1 = digitalRead(10);
+
+            if (reading1 == target_val1)
+            {
+                if ((curTime - last_debounce_time) > debounce_delay && prev_pin_state != reading1)
+                {
+                    last_debounce_time = curTime;
+                    prev_pin_state = reading1;
+                    DEBUG_PRINTLN(ctx->debug, F("[Info] -> 按钮唤醒触发"));
+                    ctx->wakeUp("wakeup");
+                }
+            }
+            else
+            {
+                prev_pin_state = reading1;
+            }
+            #endif
+
+            
+            int target_val2 = LOW; // 第二个引脚固定监听低电平（可根据实际需求修改）
+            #if     defined(ARDUINO_ESP32C3_DEV)
+            int reading2 = digitalRead(9);            
+            #else
+            int reading2 = digitalRead(0);
+            #endif
+            if (reading2 == target_val2)
+            {
+                if ((curTime - last_debounce_time_pin2) > debounce_delay && prev_pin_state_pin2 != reading2)
+                {
+                    last_debounce_time_pin2 = curTime;
+                    prev_pin_state_pin2 = reading2;
+                    DEBUG_PRINTLN(ctx->debug, F("[Info] -> 按钮唤醒触发"));
+                    ctx->wakeUp("wakeup");
+                }
+            }
+            else
+            {
+                prev_pin_state_pin2 = reading2;
+            }
+    
         }
 
         // 方式三：监听模式，按钮控制
@@ -103,7 +150,8 @@ void on_wakeup_task_static(void *arg)
         {
             int target_val = (*ctx->wake_up_scheme == "pin_high_listen") ? HIGH : LOW;
             int reading = digitalRead(*ctx->pin);
-
+            // Serial.print("reading: ");
+            // Serial.println(reading);
             if (reading == target_val && prev_listen_state != reading)
             {
                 btn_up_time = 0;

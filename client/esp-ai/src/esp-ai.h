@@ -53,22 +53,26 @@ public:
     void setVolume(float volume)
     {
         volume_config.volume = volume;
+
         // 如果你的 codec 本身声音偏大，可以在这里缩放一次，但值保持在 0~1.0 范围
 #if defined(CODEC_TYPE_ES8311_NS4150) || defined(CODEC_TYPE_ES8311_ES7210)
         float adjusted = volume_config.volume * 0.1f; // 比如最多60%
-        if(adjusted==0)
+        if (adjusted == 0)
         {
             adjusted = 0.01f; // 最小音量
         }
         Serial.printf("setVolume: %f, adjusted: %f\n", volume_config.volume, adjusted);
         esp_ai_volume.setVolume(adjusted);
 #else
-        if(volume_config.volume == 0){ 
-        esp_ai_volume.setVolume(0.01);
-        }else{ 
-        esp_ai_volume.setVolume(volume_config.volume);
+        if (volume_config.volume == 0)
+        {
+            esp_ai_volume.setVolume(0.01);
         }
-#endif 
+        else
+        {
+            esp_ai_volume.setVolume(volume_config.volume);
+        }
+#endif
         if (onVolumeCb != nullptr)
         {
             onVolumeCb(volume_config.volume);
@@ -122,6 +126,24 @@ public:
      * @url 配网地址, 有屏幕的情况下建议将 url 生成为二维码显示
      */
     void onAPInfo(void (*func)(const String &url, const String &ip, const String &ap_name)) { onAPInfoCb = func; };
+
+    /**
+     * 网络延迟数据回调
+     */
+    inline void onNetDelay(void (*func)(int net_delay)) { onNetDelayCb = func; };
+
+    /**
+     * 获取本地时间
+     */
+    inline String getLocalTimeStr()
+    { 
+        struct tm timeinfo;
+        getLocalTime(&timeinfo);
+
+        char buffer[20]; 
+        strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+        return String(buffer); 
+    };
 
     /**
      * 设备网络状态、与服务连接状态改变的回调
@@ -292,6 +314,28 @@ public:
      */
     void playBuiltinAudio(const unsigned char *data, size_t len) { play_builtin_audio(data, len); };
 
+    /**
+     * 不可被唤醒
+     */
+    inline void disabledWakeup() { disabled_wakeup = true; };
+    
+    /**
+     * 启用可被唤醒
+    */
+    inline void enabledWakeup() { disabled_wakeup = false;  };
+
+    /**
+     * 闹钟/倒计时设置后的回调
+     * @param type "clock" 闹钟 | "timer" 倒计时
+     */
+    inline void onSetClock(void (*func)(const String &cron, const String &text, const String &type)) { onSetClockCb = func; }
+    
+     /**
+     * 所有闹钟/倒计时都已经取消的回调 
+     */
+    inline void onClearClock(void (*func)()) { onClearClockCb = func; }
+
+
 private:
     ESP_AI_i2s_config_mic i2s_config_mic;
     ESP_AI_i2s_config_speaker i2s_config_speaker;
@@ -302,6 +346,7 @@ private:
     ESP_AI_reset_btn_config reset_btn_config;
     ESP_AI_lights_config lights_config;
     bool debug;
+    bool disabled_wakeup = false;
 
     long send_start_time = 0;
     bool ready_ed = false;
@@ -313,12 +358,15 @@ private:
     void (*onErrorCb)(const String &code, const String &at_pos, const String &message) = nullptr;
     void (*onAPInfoCb)(const String &url, const String &ip, const String &ap_name) = nullptr;
     void (*onNetStatusCb)(const String &status) = nullptr;
+    void (*onNetDelayCb)(int net_delay) = nullptr;
     void (*onConnectedWifiCb)(const String &device_ip) = nullptr;
     void (*onSessionStatusCb)(const String &status) = nullptr;
     void (*onPositionCb)(const String &ip, const String &nation, const String &province, const String &city, const String &latitude, const String &longitude) = nullptr;
     void (*onRepeatedlyClickCb)() = nullptr;
     bool (*onBeginCb)() = nullptr;
     void (*onEmotionCb)(const String &emotion) = nullptr;
+    void (*onSetClockCb)(const String &cron, const String &text, const String &type) = nullptr;
+    void (*onClearClockCb)() = nullptr;
     String (*onBindDeviceCb)(JSONVar data) = nullptr;
 
     void webSocketEvent(WStype_t type, uint8_t *payload, size_t length);

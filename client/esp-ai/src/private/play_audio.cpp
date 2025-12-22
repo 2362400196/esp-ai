@@ -61,7 +61,8 @@ void play_audio_task_static(void *arg)
                 send0_done = false;
             } 
             ctx->copy();
-        }
+        } 
+
 
         // 上报可用缓冲区信息
         if (*(ctx->esp_ai_ws_connected) &&

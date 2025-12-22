@@ -44,26 +44,45 @@ void on_repeatedly_click_task_static(void *arg)
     long debounce_time = 0;
     const int debounce_delay = 250;
     int prev_state = (*(ctx->power) == "high") ? 0 : 1;
+    int prev_state_boot = 1;
 
     long last_click_time = 0;
     int click_count = 0;
     const int max_click_delay = 1000;
+    bool reset_ing = false;
 
     while (true)
     {
+        if (reset_ing)
+        {
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            return;
+        }
         int reading = digitalRead(*(ctx->pin));
+
         long now = millis();
         int target_val = (*(ctx->power) == "high") ? 1 : 0;
 
-        if (reading == target_val)
+        bool boot_clicked = false;
+        int reading_boot = 1;
+#if defined(IS_BOOT_RESET)
+        reading_boot = digitalRead(BOOT_BUTTON_GPIO);
+        if (reading_boot == 0)
+        {
+            boot_clicked = true;
+        }
+#endif
+
+        if ((reading == target_val) || boot_clicked)
         {
             if ((now - debounce_time) > debounce_delay)
             {
                 debounce_time = now;
 
-                if (prev_state != reading)
+                if ((prev_state != reading) || (prev_state_boot != reading_boot))
                 {
                     prev_state = reading;
+                    prev_state_boot = reading_boot;
 
                     if ((last_click_time == 0) || ((now - last_click_time) <= max_click_delay))
                     {
@@ -72,12 +91,9 @@ void on_repeatedly_click_task_static(void *arg)
 
                         if (click_count == 5)
                         {
+                            reset_ing = true;
                             click_count = 0;
                             last_click_time = 0;
-
-                            ctx->play_builtin_audio(hui_fu_chu_chang, hui_fu_chu_chang_len);
-                            ctx->wait_mp3_player_done();
-
                             // 清除会话 ID
                             *(const_cast<String *>(ctx->esp_ai_session_id)) = "";
 
@@ -89,6 +105,10 @@ void on_repeatedly_click_task_static(void *arg)
                             if (ctx->clear_data != nullptr)
                                 ctx->clear_data();
 
+                            // 这个一定需要放到后面
+                            ctx->play_builtin_audio(hui_fu_chu_chang, hui_fu_chu_chang_len);
+                            ctx->wait_mp3_player_done();
+
                             vTaskDelay(100 / portTICK_PERIOD_MS);
                             ESP.restart(); // 重启设备
                         }
@@ -99,12 +119,13 @@ void on_repeatedly_click_task_static(void *arg)
         else
         {
             prev_state = reading;
+            prev_state_boot = reading_boot;
             if (click_count != 0 && ((now - last_click_time) >= max_click_delay))
             {
                 click_count = 0;
                 last_click_time = 0;
             }
-        } 
+        }
 
         vTaskDelay(30 / portTICK_PERIOD_MS);
     }

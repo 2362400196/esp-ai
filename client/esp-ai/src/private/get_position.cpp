@@ -51,7 +51,7 @@ void get_position_task_static(void *arg)
     DEBUG_PRINTLN(ctx->debug, ("[Info] -> 正在获取位置..."));
 
     HTTPClient http;
-    http.begin("http://api.espai.fun/sdk/position");
+    http.begin(String(ESP_AI_SERVER) + "/sdk/position");
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(10000);
     int httpCode = http.GET();

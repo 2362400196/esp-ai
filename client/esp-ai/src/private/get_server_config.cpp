@@ -44,8 +44,7 @@ bool ESP_AI::get_server_config()
     // 创建一个HTTP客户端对象
     HTTPClient http;
     DEBUG_PRINTLN(debug, "[Info] api_key：" + loc_api_key);
-    String domain = "http://api.espai.fun";
-    String url = domain + "/sdk/get_server_info_by_api_key?api_key=" + loc_api_key;
+    String url = String(ESP_AI_SERVER) + "/sdk/get_server_info_by_api_key?api_key=" + loc_api_key;
     http.begin(url);
     http.addHeader("Content-Type", "application/json");
     int httpCode = http.GET();
@@ -85,7 +84,7 @@ bool ESP_AI::get_server_config()
             }
             else
             {
-                String ip_str = (const char *)parse_res["data"]["ip"]; 
+                String ip_str = (const char *)parse_res["data"]["ip"];
                 int port = (int)parse_res["data"]["port"];
                 String protocol = (const char *)parse_res["data"]["protocol"];
                 String path = (const char *)parse_res["data"]["path"];

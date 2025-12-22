@@ -28,8 +28,140 @@
  */
 #include "main.h"
 
+void getClockData(bool debug, const String &_ak, void (*onSetClockCb)(const String &cron, const String &text, const String &type))
+{
+    if (_ak)
+    {
+        DEBUG_PRINTLN(debug, ("[Info] -> 正在获取闹钟..."));
+        HTTPClient get_clock_http;
+        get_clock_http.begin(String(ESP_AI_SERVER) + "/alarm_timers/list_device");
+        get_clock_http.addHeader("Content-Type", "application/json");
+        JSONVar json_params;
+        json_params["device_id"] = get_device_id();
+        json_params["api_key"] = _ak;
+
+        String send_data = JSON.stringify(json_params);
+        int httpCode = get_clock_http.POST(send_data);
+        if (httpCode > 0)
+        {
+            String payload = get_clock_http.getString();
+            JSONVar parse_res = JSON.parse(payload);
+            if (JSON.typeof(parse_res) == "undefined" || String(httpCode) != "200")
+            {
+                get_clock_http.end();
+                Serial.println("[Error] -> 闹钟数据获取失败，错误码:" + String(httpCode));
+            }
+
+            if (parse_res.hasOwnProperty("success"))
+            {
+                bool success = (bool)parse_res["success"];
+                String message = (const char *)parse_res["message"];
+                if (success == false)
+                {
+                    get_clock_http.end();
+                    Serial.println("[Error] -> 闹钟数据获取失败，错误原因：" + message);
+                }
+                else
+                {
+                    // 这里数据是 [ {  cron:"xx", id:"xxx" }, { cron:"xx", id:"xxx" }, .... ]
+                    JSONVar data = parse_res["data"];
+                    for (int i = 0; i < data.length(); i++)
+                    {
+                        String cron = (const char *)data[i]["cron"];
+                        String text = (const char *)data[i]["desc"];
+                        String clock_type = (const char *)data[i]["type"];
+                        int sort = (int)data[i]["sort"];
+
+                        if (clock_type == "1")
+                        {
+                            DEBUG_PRINT(debug, "[Info] -> 启动闹钟:");
+                            DEBUG_PRINT(debug, sort);
+                            DEBUG_PRINT(debug, " -> ");
+                            DEBUG_PRINT(debug, cron);
+                            DEBUG_PRINT(debug, " -> ");
+                            DEBUG_PRINTLN(debug, text);
+
+                            if (sort == 0)
+                            {
+                                clock_id_1 = Cron.create(cron.c_str(), clock_task_1, false);
+                                clock_text_1 = text;
+                            }
+                            else if (sort == 1)
+                            {
+                                clock_id_2 = Cron.create(cron.c_str(), clock_task_2, false);
+                                clock_text_2 = text;
+                            }
+                            else if (sort == 2)
+                            {
+                                clock_id_3 = Cron.create(cron.c_str(), clock_task_3, false);
+                                clock_text_3 = text;
+                            }
+
+                            if (onSetClockCb != nullptr)
+                            {
+                                onSetClockCb(cron, text, "clock");
+                            }
+                        }
+                        else if (clock_type == "2")
+                        {
+                            DEBUG_PRINT(debug, "[Info] -> 启动单次倒计时: ");
+                            DEBUG_PRINT(debug, cron);
+                            DEBUG_PRINT(debug, " -> ");
+                            DEBUG_PRINTLN(debug, text);
+ 
+                            timer_id_1 = Cron.create(cron.c_str(), timer_task_1, true);
+                            timer_text_1 = text;
+                            if (onSetClockCb != nullptr)
+                            {
+                                onSetClockCb(cron, text, "timer");
+                            }
+                        }
+                        else if (clock_type == "3")
+                        {
+                            DEBUG_PRINT(debug, "[Info] -> 启动循环倒计时: ");
+                            DEBUG_PRINT(debug, cron);
+                            DEBUG_PRINT(debug, " -> ");
+                            DEBUG_PRINTLN(debug, text);
+ 
+                            timer_id_1 = Cron.create(cron.c_str(), timer_task_1_loop, false);
+                            timer_text_1 = text;
+                            if (onSetClockCb != nullptr)
+                            {
+                                onSetClockCb(cron, text, "timer");
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                get_clock_http.end();
+                Serial.println("[Error] -> 闹钟数据获取失败，请求服务失败！");
+            }
+        }
+        else
+        {
+            Serial.println("[Error] -> 闹钟数据获取失败，请求服务失败！");
+            get_clock_http.end();
+        }
+    }
+}
+
 void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 {
+
+    String api_key = getLocalData("api_key");
+    String ext1 = getLocalData("ext1");
+    String _ak = "";
+    if (api_key != "")
+    {
+        _ak = api_key;
+    }
+    else
+    {
+        _ak = ext1;
+    }
+
     switch (type)
     {
     case WStype_DISCONNECTED:
@@ -78,8 +210,7 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
             String sendData = JSON.stringify(data_1);
             esp_ai_webSocket.sendTXT(sendData);
             xSemaphoreGive(esp_ai_ws_mutex);
-        }
-
+        } 
         // 内置状态处理
         status_change("3");
         // 设备状态回调
@@ -87,7 +218,7 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         {
             esp_ai_net_status = "3";
             onNetStatusCb("3");
-        }
+        } 
         break;
     }
     case WStype_TEXT:
@@ -145,13 +276,73 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
 
                 else if (type == "net_delay")
                 {
-                    long net_delay = parseRes["net_delay"];
+                    int net_delay = parseRes["net_delay"];
                     DEBUG_PRINTLN(debug, "[Info] -> 网络延时：" + String(net_delay) + "ms");
+
+                    // 网络延迟过高时给出提示
+                    // ing...
+                    if (onNetDelayCb != nullptr)
+                    {
+                        onNetDelayCb(net_delay);
+                    }
+
+                    uint64_t now = (uint64_t)(double)parseRes["now"];
+                    // 转换为秒和微秒
+                    time_t seconds = now / 1000;
+                    suseconds_t useconds = (now % 1000) * 1000;
+
+                    // 设置 UTC 时间
+                    timeval tv;
+                    tv.tv_sec = seconds;
+                    tv.tv_usec = useconds;
+                    settimeofday(&tv, nullptr);
+
+                    // 设置上海时区 (UTC+8)
+                    setenv("TZ", "CST-8", 1); // 中国标准时间，东八区
+                    tzset();
+
+                    // 恢复闹钟
+                    getClockData(debug, _ak, onSetClockCb);
                 }
 
                 // user command
                 else if (type == "instruct")
                 {
+
+                    if (command_id == "cancel_timer")
+                    {
+                        DEBUG_PRINTLN(debug, "[Info] -> 取消倒计时");
+                        Cron.free(timer_id_1);
+                        timer_id_1 = dtINVALID_ALARM_ID;
+                        timer_text_1 = "";
+                        // 请求接口, 两种情况都需要清除
+                        set_clock(_ak, "0", "0", "2", "del");
+                        set_clock(_ak, "0", "0", "3", "del");
+
+                        if (clock_text_1 == "" && clock_text_2 == "" && clock_text_3 == "" && timer_text_1 == "")
+                        {
+                            if (onClearClockCb != nullptr)
+                                onClearClockCb();
+                        }
+                        return;
+                    }
+                    if (command_id == "cancel_clock")
+                    {
+                        DEBUG_PRINTLN(debug, "[Info] -> 取消闹钟");
+                        Cron.free(clock_id_1);
+                        clock_id_1 = dtINVALID_ALARM_ID;
+                        clock_text_1 = "";
+                        // 请求接口
+                        set_clock(_ak, "0", "0", "1", "del");
+
+                        if (clock_text_1 == "" && clock_text_2 == "" && clock_text_3 == "" && timer_text_1 == "")
+                        {
+                            if (onClearClockCb != nullptr)
+                                onClearClockCb();
+                        }
+                        return;
+                    }
+
                     if (onEventCb != nullptr)
                     {
                         onEventCb(command_id, data);
@@ -161,6 +352,68 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
                     {
                         esp_ai_webSocket.sendTXT("{ \"type\":\"instruct_ack\"}");
                         xSemaphoreGive(esp_ai_ws_mutex);
+                    }
+                }
+                else if (type == "cron_task")
+                {
+
+                    String cron = (const char *)parseRes["cron"];
+                    String text = (const char *)parseRes["text"];
+                    String clock_type = (const char *)parseRes["clock_type"]; // 闹钟类型，'1' 定时器闹钟 '2' 单次倒计时 '3' 循环倒计时
+
+                    if (clock_type == "1")
+                    {
+                        DEBUG_PRINT(debug, "[Info] -> 收到闹钟: ");
+                        DEBUG_PRINT(debug, cron);
+                        DEBUG_PRINT(debug, " -> ");
+                        DEBUG_PRINTLN(debug, text);
+
+                        clock_id_1 = Cron.create(cron.c_str(), clock_task_1, false);
+                        clock_text_1 = text;
+                        set_clock(_ak, text, cron, clock_type, "set");
+
+                        if (onSetClockCb != nullptr)
+                        {
+                            onSetClockCb(cron, text, "clock");
+                        }
+                    }
+                    else if (clock_type == "2")
+                    {
+                        DEBUG_PRINT(debug, "[Info] -> 收到单次倒计时: ");
+                        DEBUG_PRINT(debug, cron);
+                        DEBUG_PRINT(debug, " -> ");
+                        DEBUG_PRINTLN(debug, text);
+
+                        Cron.free(timer_id_1);
+                        timer_id_1 = dtINVALID_ALARM_ID;
+ 
+                        timer_id_1 = Cron.create(cron.c_str(), timer_task_1, true);
+                        timer_text_1 = text;
+                        set_clock(_ak, text, cron, clock_type, "set");
+
+                        if (onSetClockCb != nullptr)
+                        {
+                            onSetClockCb(cron, text, "timer");
+                        }
+                    }
+                    else if (clock_type == "3")
+                    {
+                        DEBUG_PRINT(debug, "[Info] -> 收到循环倒计时: ");
+                        DEBUG_PRINT(debug, cron);
+                        DEBUG_PRINT(debug, " -> ");
+                        DEBUG_PRINTLN(debug, text);
+
+                        Cron.free(timer_id_1);
+                        timer_id_1 = dtINVALID_ALARM_ID;
+ 
+                        timer_id_1 = Cron.create(cron.c_str(), timer_task_1_loop, false);
+                        timer_text_1 = text;
+                        set_clock(_ak, text, cron, clock_type, "set");
+
+                        if (onSetClockCb != nullptr)
+                        {
+                            onSetClockCb(cron, text, "timer");
+                        }
                     }
                 }
 
@@ -178,8 +431,12 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
                     xSemaphoreTake(audio_mutex, portMAX_DELAY);
                     spk_ing = true;
                     xSemaphoreGive(audio_mutex);
-                    esp_ai_tts_task_id = (const char *)parseRes["tts_task_id"]; 
+                    esp_ai_tts_task_id = (const char *)parseRes["tts_task_id"];
                     DEBUG_PRINTLN(debug, "[TTS] -> TTS 任务：" + esp_ai_tts_task_id);
+                    if (esp_ai_tts_task_id == "play_music" && onEventCb != nullptr)
+                    {
+                        onEventCb("play_music", "");
+                    }
                 }
                 else if (type == "session_start")
                 {
@@ -226,28 +483,9 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
                     Serial.print(code);
                     Serial.println(" message: ");
                     Serial.println(message);
-                    Serial.println(F("[Error] -> 请检测服务器配置中是否配置了鉴权参数。")); 
+                    Serial.println(F("[Error] -> 请检测服务器配置中是否配置了鉴权参数。"));
 
-                    if (code == "4002")
-                    {
-                        play_builtin_audio(yu_e_bu_zuo, yu_e_bu_zuo_len);
-                    }
-                    else if (code == "4001")
-                    {
-                        play_builtin_audio(e_du_ka_bu_cun_zai, e_du_ka_bu_cun_zai_len);
-                    }
-                    else if (code == "4000")
-                    {
-                        play_builtin_audio(chao_ti_wei_qi_yong, chao_ti_wei_qi_yong_len);
-                    }
-                    else if (code == "4003")
-                    {
-                        play_builtin_audio(jian_quan_shi_bai, jian_quan_shi_bai_len);
-                    }
-                    else if (code == "4004")
-                    {
-                        play_builtin_audio(she_bei_wei_bang_ding_mp3, she_bei_wei_bang_ding_mp3_len);
-                    }
+                    handel_error(code);
 
                     if (onErrorCb != nullptr)
                     {
@@ -260,34 +498,13 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
                     String message = (const char *)parseRes["message"];
                     String code = (const char *)parseRes["code"];
                     Serial.println("[Error] -> 服务错误：" + at_pos + " " + code + " " + message);
+                    handel_error(code);
 
-                    if (code == "4002")
-                    {
-                        play_builtin_audio(yu_e_bu_zuo, yu_e_bu_zuo_len);
-                    }
-                    else if (code == "4001")
-                    {
-                        play_builtin_audio(e_du_ka_bu_cun_zai, e_du_ka_bu_cun_zai_len);
-                    }
-                    else if (code == "4000")
-                    {
-                        play_builtin_audio(chao_ti_wei_qi_yong, chao_ti_wei_qi_yong_len);
-                    }
-                    else if (code == "4003")
-                    {
-                        play_builtin_audio(jian_quan_shi_bai, jian_quan_shi_bai_len);
-                    }
-                    else if (code == "4004")
-                    {
-                        play_builtin_audio(she_bei_wei_bang_ding_mp3, she_bei_wei_bang_ding_mp3_len);
-                    }
-                    
-                    else if (code == "102" || code == "101" || code == "100")
+                    if (code == "102" || code == "101" || code == "100")
                     {
                         esp_ai_session_id = "";
                         asr_ing = false;
                     }
-
                     if (onErrorCb != nullptr)
                     {
                         onErrorCb(code, at_pos, message);
@@ -295,21 +512,21 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
                 }
 
                 else if (type == "session_status")
-                { 
-                    String status = (const char *)parseRes["status"]; 
+                {
+                    String status = (const char *)parseRes["status"];
                     if (status == "iat_end")
                     {
 
                         esp_ai_start_ed = false;
                         esp_ai_start_send_audio = false;
-                        asr_ing = false; 
+                        asr_ing = false;
                         open_spk();
                         xSemaphoreTake(audio_mutex, portMAX_DELAY);
                         spk_ing = true;
                         xSemaphoreGive(audio_mutex);
                     }
                     else if (status == "iat_start")
-                    { 
+                    {
                         send_start_time = 0;
                         // 开始发送音频时，先等话说完
                         wait_mp3_player_done();
@@ -490,13 +707,13 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         esp_ai_session_status = String(session_status_string);
 
         // test...
-        // Serial.print("内容长度：");
-        // Serial.print(length);
-        // Serial.print("  会话ID：");
-        // Serial.print(sid);
-        // Serial.print("  会话状态：");
-        // Serial.print(esp_ai_session_status);
-        // Serial.println("");
+        Serial.print("内容长度：");
+        Serial.print(length);
+        Serial.print("  会话ID：");
+        Serial.print(sid);
+        Serial.print("  会话状态：");
+        Serial.print(esp_ai_session_status);
+        Serial.println("");
 
         // 提取音频数据
         uint8_t *audioData = payload + 6;
@@ -536,7 +753,7 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
             // 内置状态处理
             status_change("tts_real_end");
             if (esp_ai_session_id != "")
-            { 
+            {
                 wait_mp3_player_done();
                 if (xSemaphoreTake(esp_ai_ws_mutex, pdMS_TO_TICKS(100)) == pdTRUE)
                 {
@@ -563,7 +780,7 @@ void ESP_AI::webSocketEvent(WStype_t type, uint8_t *payload, size_t length)
         }
         else if (esp_ai_session_status == SID_TTS_END)
         {
-           
+
             // 服务连接成功播放完毕
             bool is_first_connect = esp_ai_played_connected == false && sid == SID_CONNECTED_SERVER && esp_ai_session_status == SID_TTS_END;
             if (is_first_connect)

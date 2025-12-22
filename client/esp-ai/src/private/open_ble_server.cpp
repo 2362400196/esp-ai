@@ -26,7 +26,7 @@
  * @github https://github.com/wangzongming/esp-ai
  * @websit https://espai.fun
  */
- 
+
 #include "open_ble_server.h"
 const String EOT_MARKER = "--END--";
 String ESP_AI_BLE_INCOMING_BUFFER = ""; // 初始化为空字符串
@@ -123,7 +123,7 @@ void ESP_AI::ble_connect_wifi()
         ESP.restart();
     }
 }
- 
+
 class CharacteristicCallbacks : public NimBLECharacteristicCallbacks
 {
     void onWrite(NimBLECharacteristic *esp_ai_ble_characteristic, NimBLEConnInfo &connInfo) override
@@ -169,7 +169,7 @@ class CharacteristicCallbacks : public NimBLECharacteristicCallbacks
 
 void ESP_AI::open_ble_server()
 {
-#if !defined(DISABLE_BLE_NET)
+#if !defined(DISABLE_BLE_NET)   
     // 防止内存不足，先进行播报
     play_builtin_audio(wei_xin_pei_wang_mp3, wei_xin_pei_wang_mp3_len);
     awaitPlayerDone(); 

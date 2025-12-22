@@ -69,6 +69,8 @@ void handle_ble_data()
 
 void ESP_AI::loop()
 {
+    Cron.delay();
+    
 #if !defined(DISABLE_AP_NET)
     if (esp_ai_status == "0_ap" && wifi_config.way == "AP")
     {
@@ -76,7 +78,9 @@ void ESP_AI::loop()
     }
     esp_ai_server.handleClient();
 #endif
+#if !defined(USE_4G_MODULE)
     esp_ai_webSocket.loop();
+#endif
 #if !defined(DISABLE_BLE_NET)
     handle_ble_data();
 #endif

@@ -33,6 +33,12 @@ void ESP_AI::wakeUp(const String &scene)
     if (!ready_ed)
         return;
 
+    if (disabled_wakeup)
+    {
+        DEBUG_PRINTLN(debug, F("[Info] -> 唤醒被禁用。"));
+        return;
+    }
+
     if (asr_ing && asr_break_num < 1)
     {
         // 上一次唤醒距离本次唤醒时间过长时需要考虑结束上次唤醒 ...
@@ -54,10 +60,10 @@ void ESP_AI::wakeUp(const String &scene)
     asr_break_num = 0;
 
     if (esp_ai_ws_connected)
-    { 
+    {
         esp_ai_session_id = "";
         bool is_playing = mp3_player_is_playing();
-        mp3_player_stop();   
+        mp3_player_stop();
 
         // 用户打断不播放问候语，这样给人反应会快很多
         if (!is_playing)

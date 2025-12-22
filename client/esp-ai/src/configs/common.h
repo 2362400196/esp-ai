@@ -29,7 +29,10 @@
 #pragma once
 #include <driver/gpio.h>
 
-#define ESP_AI_VERSION "2.87.50"
+#define ESP_AI_VERSION "2.95.51"
+
+// #define ESP_AI_SERVER "http://192.168.3.16:7002"
+#define ESP_AI_SERVER "http://api.espai.fun"
 
 #define BLE_SERVICE_UUID "BAAD"
 #define BLE_CHARACTERISTIC_UUID "F00D"
@@ -80,6 +83,18 @@
 #define DISPLAY_MIRROR_X true
 #define DISPLAY_MIRROR_Y true
 
+
+ 
+// 使用软串口 TX=11，R=12
+#ifndef esp_ai_serial_tx
+#if defined(ARDUINO_XIAO_ESP32S3)
+#define esp_ai_serial_tx 43
+#elif defined(ARDUINO_ESP32C3_DEV)
+#define esp_ai_serial_tx WAKEUP_TX
+#else
+#define esp_ai_serial_tx 11
+#endif
+#endif
 #ifndef esp_ai_serial_rx
 #if defined(ARDUINO_XIAO_ESP32S3)
 #define esp_ai_serial_rx 44
@@ -94,6 +109,7 @@
 #define MIC_i2s_num I2S_NUM_0
 #define YSQ_i2s_num I2S_NUM_0
 #else
+#define I2S_NUM_1 1
 #define MIC_i2s_num I2S_NUM_1
 #define YSQ_i2s_num I2S_NUM_0
 #endif
@@ -111,8 +127,8 @@
 #define ON_REPEATEDLY_CLICK_TASK_SIZE 1024 * 3
 
 #if defined(ARDUINO_ESP32C3_DEV)
-#define ON_WAKE_UP_TASK_SIZE 1024 * 2
-// #define ON_WAKE_UP_TASK_SIZE 1024 * 4 // debug: 4kb
+// #define ON_WAKE_UP_TASK_SIZE 1024 * 2
+#define ON_WAKE_UP_TASK_SIZE 1024 * 4 // debug: 4kb
 #else
 #define ON_WAKE_UP_TASK_SIZE 1024 * 4
 #endif
@@ -123,6 +139,7 @@
 #else
 #define VOL_LISTEN_TASK_SIZE 1024 * 4
 #endif
+
 /**
  * 音频缓冲区大小和块大小  
 */
@@ -142,3 +159,5 @@
         Serial.println(x);      \
     }
 #define DEBUG_PRINTF(fmt, ...) printf_P(PSTR("[%s][%d]:" fmt "\r\n"), __func__, __LINE__, ##__VA_ARGS__);
+
+ 

@@ -75,7 +75,7 @@ void vol_listen_task_static(void *arg)
         // ing...
 
         // vTaskDelay(100 / portTICK_PERIOD_MS);
-        vTaskDelay(50 / portTICK_PERIOD_MS);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }

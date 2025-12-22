@@ -32,8 +32,7 @@
 #include <stddef.h>
 #include <Arduino.h>
 #include <driver/i2s.h>
-#include <WiFi.h>
-#include <WiFiMulti.h>
+#include <WiFi.h>  
 #include <WebSocketsClient.h>
 
 #include "USER_CONFIG.h"
@@ -69,41 +68,66 @@
 // 比IDF蓝牙将会节省 42kb.
 #include <NimBLEDevice.h>
 
+#include <time.h> // time() ctime()
+#include "CronAlarms.h"
+
 #include <HTTPClient.h>
 #include "nvs_flash.h"
 
-#include "audio/zh/lian_jie_shi_bai.h"
-#include "audio/zh/lian_jie_zhong.h"
-#include "audio/zh/pei_wang_cheng_gong.h"
-#include "audio/zh/qing_pei_wang.h"
-#include "audio/zh/san_ci.h"
-#include "audio/zh/lian_jie_cheng_gong.h"
-#include "audio/zh/fu_wu_lian_jie_zhong.h"
-#include "audio/zh/yu_e_bu_zuo.h"
-#include "audio/zh/chao_ti_wei_qi_yong.h"
-#include "audio/zh/e_du_ka_bu_cun_zai.h"
-#include "audio/zh/mei_dian_le.h"
-// #include "audio/zh/hui_fu_chu_chang.h"
-#include "audio/zh/du.h"
-#include "audio/zh/jian_quan_shi_bai.h"
-#include "audio/zh/she_bei_wei_bang_ding.h"
-#include "audio/zh/wei_xin_pei_wang.h"
- 
-// 使用软串口 TX=11，R=12
-#ifndef esp_ai_serial_tx
-#if defined(ARDUINO_XIAO_ESP32S3)
-#define esp_ai_serial_tx 43
-#elif defined(ARDUINO_ESP32C3_DEV)
-#define esp_ai_serial_tx WAKEUP_TX
-#else
-#define esp_ai_serial_tx 11
+// test...
+#if defined(USE_4G_MODULE)
+#include "esp-ai-net.h"
 #endif
+
+// 根据语种选择引用不同文件夹下的音频文件
+#if defined (ESP_AI_LANGUAGE_ZH)
+  // 中文音频文件引用（默认）
+  #pragma message "Compiling with Chinese audio files"
+  #include "audio/zh/lian_jie_shi_bai.h"
+  #include "audio/zh/lian_jie_zhong.h"
+  #include "audio/zh/pei_wang_cheng_gong.h"
+  #include "audio/zh/qing_pei_wang.h"
+  #include "audio/zh/san_ci.h"
+  #include "audio/zh/fu_wu_lian_jie_zhong.h"
+  #include "audio/zh/yu_e_bu_zuo.h"
+  #include "audio/zh/chao_ti_wei_qi_yong.h"
+  #include "audio/zh/e_du_ka_bu_cun_zai.h"
+  #include "audio/zh/mei_dian_le.h"
+  #include "audio/zh/du.h"
+  #include "audio/zh/jian_quan_shi_bai.h"
+  #include "audio/zh/she_bei_wei_bang_ding.h"
+  #include "audio/zh/wei_xin_pei_wang.h"
+  #include "audio/zh/tts_error.h"
+#elif defined (ESP_AI_LANGUAGE_EN)
+//   // 英文音频文件引用
+  #pragma message "Compiling with English audio files"
+  #include "audio/en/lian_jie_shi_bai.h"
+  #include "audio/en/lian_jie_zhong.h"
+  #include "audio/en/pei_wang_cheng_gong.h"
+  #include "audio/en/qing_pei_wang.h"
+  #include "audio/en/jian_quan_shi_bai.h"
+  #include "audio/en/mei_dian_le.h"
+  #include "audio/en/yu_e_bu_zuo.h"
+  #include "audio/en/chao_ti_wei_qi_yong.h"
+  #include "audio/en/e_du_ka_bu_cun_zai.h"
+  #include "audio/en/wei_xin_pei_wang_mp3.h"
+  #include "audio/en/tts_error_mp3.h"
+  #include "audio/en/she_bei_wei_bang_ding_mp3.h"
+  #include "audio/en/du.h"
+
+#elif defined (ESP_AI_LANGUAGE_JA)
+  // 日语音频文件引用（预留位置，待添加）
+  // #include "audio/ja/lian_jie_shi_bai.h"
+  // #include "audio/ja/lian_jie_zhong.h"
+  // ... 其他日语音频文件
 #endif
 
 
 #if !defined(LITTLE_ROM)
-extern WiFiMulti wifiMulti;
+// extern WiFiMulti wifiMulti;
 #endif
+
+
 
 extern HardwareSerial Esp_ai_serial;
 extern Preferences esi_ai_prefs;
@@ -171,9 +195,9 @@ struct ESP_AI_wifi_config
     char ap_name[30];
     // 自定义配网页面
     // String html_str;
-    const char* html_str; // 改为指针
- 
-    // 配网方式 AP | BLE 
+    const char *html_str; // 改为指针
+
+    // 配网方式 AP | BLE
     String way;
 };
 
@@ -232,8 +256,15 @@ struct ESP_AI_CONFIG
 
 extern String esp_ai_net_status;
 extern String ap_connect_err;
-
+ 
+// test...
+#if defined(USE_4G_MODULE)
+extern ESP_AI_NET esp_ai_webSocket;
+#else
 extern WebSocketsClient esp_ai_webSocket;
+#endif
+
+// extern WebSocketsClient esp_ai_webSocket;
 extern WebServer esp_ai_server;
 #if !defined(DISABLE_AP_NET)
 extern DNSServer esp_ai_dns_server;
@@ -242,7 +273,12 @@ extern DNSServer esp_ai_dns_server;
 extern bool spk_ing;
 extern SemaphoreHandle_t audio_mutex;
 
- 
+#define NOISE_THRESHOLD 200      // 噪声阈值
+#define NOISE_REDUCTION_FACTOR 0.5 // 噪声降低因子
+#define DYNAMIC_GAIN_TARGET 8000  // 目标信号强度
+#define MAX_GAIN 4.0             // 最大增益倍数
+#define MIN_GAIN 0.5             // 最小增益倍数
+
 
 class BufferPrint : public Print
 {
@@ -265,38 +301,39 @@ public:
         if (!spk_ing)
             return 0;
         if (xSemaphoreTake(audio_mutex, pdMS_TO_TICKS(10)) == pdTRUE)
-        { 
+        {
             // test
             // Serial.print("实际写入 esp_ai_audio_buffer：");
             // Serial.println(size);
             // 这里要注意可能会导致锁无法释放的问题
-            size_t result = _buffer.writeArray(buffer, size); 
+            size_t result = _buffer.writeArray(buffer, size);
             xSemaphoreGive(audio_mutex);
             return result;
-        }  
+        }
         return 0;
     }
-    void reset(){
+    void reset()
+    {
         _buffer.reset();
     }
-    void setWriteMaxWait(TickType_t ticks){ 
+    void setWriteMaxWait(TickType_t ticks)
+    {
         _buffer.setWriteMaxWait(ticks);
     }
-    
 
 private:
     BufferRTOS<uint8_t> &_buffer;
 };
-   
+
 extern EncodedAudioStream esp_ai_dec;
 extern MP3DecoderHelix esp_ai_dec_mp3;
 extern VolumeStream esp_ai_volume;
 extern StreamCopy esp_ai_copier;
 extern BufferPrint esp_ai_spk_buffer_print;
 extern BufferRTOS<uint8_t> esp_ai_audio_buffer;
-extern QueueStream<uint8_t> esp_ai_spk_queue; 
+extern QueueStream<uint8_t> esp_ai_spk_queue;
 
-#if defined(CODEC_TYPE_ES8311_NS4150) 
+#if defined(CODEC_TYPE_ES8311_NS4150)
 extern AudioInfo esp_ai_audio_info;
 extern DriverPins esp_ai_audio_pins;
 extern AudioBoard esp_ai_audio_board;
@@ -305,7 +342,7 @@ extern I2SCodecStream esp_ai_i2s_input;
 #elif defined(CODEC_TYPE_ES8311_ES7210)
 extern AudioInfo esp_ai_audio_info;
 extern DriverPins esp_ai_audio_pins;
-extern AudioBoard esp_ai_audio_board;   
+extern AudioBoard esp_ai_audio_board;
 extern I2SCodecStream esp_ai_spk_i2s;
 
 extern AudioInfo esp_ai_mic_info;
@@ -362,8 +399,52 @@ public:
                 esp_ai_webSocket.sendBIN((uint8_t *)processedBuffer, samples_read * sizeof(int16_t));
             }
             else
-            { 
+            {
+
+#if defined(CODEC_TYPE_ES8311_ES7210)
+                // 已经是 16/24/32bit 的情况
+                int samples_read = size / sizeof(int16_t); // 假设是 16bit
+                const int16_t *rawBuffer = reinterpret_cast<const int16_t *>(buffer);
+                int16_t processedBuffer[MIC_SAMPLE_BUFFER_SIZE];
+                // 应用降噪处理
+                for (size_t i = 0; i < std::min(samples_read, MIC_SAMPLE_BUFFER_SIZE); i++) 
+                // for (size_t i = 0; i <samples_read; i++)
+                {
+                    // 复制原始数据
+                    processedBuffer[i] = rawBuffer[i];
+                    // 如果信号小于噪声阈值，降低其强度
+                    if (abs(processedBuffer[i]) < NOISE_THRESHOLD) {
+                        processedBuffer[i] = (int16_t)(processedBuffer[i] * NOISE_REDUCTION_FACTOR);
+                    }
+                }
+                int16_t maxAmplitude = 0;
+                for (size_t i = 0; i < samples_read; i++) {
+                    int16_t absValue = abs(processedBuffer[i]);
+                    if (absValue > maxAmplitude) {
+                    maxAmplitude = absValue;
+                    }
+                }
+                // // 应用动态增益
+                if (maxAmplitude != 0)
+                {
+                // 计算所需增益因子
+                float gainFactor = (float)DYNAMIC_GAIN_TARGET / maxAmplitude;
+                // 限制增益范围
+                if (gainFactor > MAX_GAIN) gainFactor = MAX_GAIN;
+                if (gainFactor < MIN_GAIN) gainFactor = MIN_GAIN;
+                // 应用增益
+                for (size_t i = 0; i < samples_read; i++) {
+                    // 应用增益并防止溢出
+                    int32_t temp = (int32_t)(processedBuffer[i] * gainFactor);
+                    if (temp > 32767) temp = 32767;
+                    else if (temp < -32768) temp = -32768;
+                    processedBuffer[i] = (int16_t)temp;
+                }
+                    }
+                esp_ai_webSocket.sendBIN((uint8_t *)processedBuffer, samples_read * sizeof(int16_t));
+#else
                 esp_ai_webSocket.sendBIN(buffer, size);
+#endif
             }
 
             xSemaphoreGive(esp_ai_ws_mutex);
@@ -374,12 +455,12 @@ public:
     }
 };
 
-extern WebsocketStream ws_stream; 
+extern WebsocketStream ws_stream;
 extern VolumeStream esp_ai_mic_volume;
 extern StreamCopy mic_to_ws_copier;
 
 extern int16_t *esp_ai_asr_sample_buffer;
- 
+
 extern bool esp_ai_start_ed;
 extern bool esp_ai_ws_connected;
 extern String esp_ai_session_id;
@@ -387,7 +468,7 @@ extern String esp_ai_session_status;
 extern String esp_ai_tts_task_id;
 extern String esp_ai_status;
 extern bool esp_ai_sleep;
-extern bool asr_ing; 
+extern bool asr_ing;
 extern int I2S_model;
 
 // 聆听模式
@@ -418,9 +499,9 @@ extern ESP_AI_volume_config default_volume_config;
 // 重置按钮 { 输入引脚，输入最大值，默认音量 }
 extern ESP_AI_reset_btn_config default_reset_btn_config;
 extern ESP_AI_lights_config default_lights_config;
- 
+
 extern Adafruit_NeoPixel *esp_ai_pixels;
- 
+
 extern String wake_up_scheme;
 
 /**
@@ -480,4 +561,27 @@ extern NimBLEAdvertising *esp_ai_ble_advertising;
 
 extern void open_spk();
 extern void open_mic();
-extern void white_zero();
+
+extern void handel_error(const String &code);
+
+// 倒计时和闹钟
+extern String clock_text_1;
+extern CronId clock_id_1;
+extern void clock_task_1();
+
+extern String clock_text_2;
+extern CronId clock_id_2;
+extern void clock_task_2();
+
+extern String clock_text_3;
+extern CronId clock_id_3;
+extern void clock_task_3();
+
+extern String timer_text_1;
+extern CronId timer_id_1;
+extern void timer_task_1();
+extern void timer_task_1_loop();
+
+void set_clock(const String &api_key, const String &text, const String &cron, const String &type, const String &action);
+
+extern void full_fake_bytes();

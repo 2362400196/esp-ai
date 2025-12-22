@@ -58,15 +58,22 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
 #endif
 
     esp_ai_ws_mutex = xSemaphoreCreateMutex();
-
     if (strcmp(config.wake_up_config.wake_up_scheme, "asrpro") == 0 || strcmp(config.wake_up_config.wake_up_scheme, "serial") == 0)
     {
+#if defined(ARDUINO_ESP32C3_DEV)
+        pinMode(9, INPUT_PULLUP);
+        Serial.println(F("[Info] ESP32-C3 开发板使用 GPIO9 作为唤醒引脚"));
+#else
+        // 天问唤醒兼容BOOT按钮和三角按钮
+        pinMode(10, INPUT_PULLDOWN);
+        pinMode(0, INPUT_PULLUP);
+        Serial.println(F("[Info] ESP32-S3 开发板使用 GPIO10 和 GPIO0 作为唤醒引脚"));
+#endif
 #if !defined(IS_BOWKNOT)
         // 参数包括串行通信的波特率、串行模式、使用的 RX 引脚和 TX 引脚。
         Esp_ai_serial.begin(115200, SERIAL_8N1, esp_ai_serial_rx, esp_ai_serial_tx);
 #endif
     }
-
     // 内存初始化
     espai_system_mem_init();
 
@@ -119,7 +126,7 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
     }
 
     // 重置按钮配置
-    if (config.reset_btn_config.pin)
+    if (config.reset_btn_config.pin || config.reset_btn_config.pin == 0)
     {
         reset_btn_config = config.reset_btn_config;
     }
@@ -153,6 +160,10 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
     {
         pinMode(wake_up_config.pin, INPUT_PULLDOWN);
     }
+
+#if defined(IS_BOOT_RESET)
+    pinMode(BOOT_BUTTON_GPIO, INPUT_PULLUP);
+#endif
 
     int pin = 18;
     int count = 1;
@@ -193,6 +204,7 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
 
     // 初始化扬声器
     AudioLogger::instance().begin(Serial, AudioLogger::Error);
+    // AudioDriverLogger.begin(Serial,AudioDriverLogLevel::Debug);
     // AudioLogger::instance().begin(Serial, AudioLogger::Info);
     // AudioLogger::instance().begin(Serial, AudioLogger::Debug);
 #if defined(CODEC_TYPE_BLAMP_I2S)
@@ -221,33 +233,31 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
 #endif
 
 #if defined(CODEC_TYPE_ES8311_ES7210)
+    TwoWire mywire = TwoWire(1);
     pinMode(AUDIO_CODEC_PA_PIN, OUTPUT);
     digitalWrite(AUDIO_CODEC_PA_PIN, HIGH); // 打开功放
-    Serial.println("[Info] audio board begin...");
-    Serial.printf("AUDIO_CODEC_I2C_SCL_PIN=%d, AUDIO_CODEC_I2C_SDA_PIN=%d\n", AUDIO_CODEC_I2C_SCL_PIN, AUDIO_CODEC_I2C_SDA_PIN);
-    esp_ai_audio_pins.addI2C(PinFunction::CODEC, AUDIO_CODEC_I2C_SCL_PIN, AUDIO_CODEC_I2C_SDA_PIN, AUDIO_CODEC_ES8311_ADDR, AUDIO_CODEC_I2C_SPEED);
+
+    esp_ai_audio_pins.addI2C(PinFunction::CODEC, AUDIO_CODEC_I2C_SCL_PIN, AUDIO_CODEC_I2C_SDA_PIN, AUDIO_CODEC_ES8311_ADDR, AUDIO_CODEC_I2C_SPEED, mywire);
     esp_ai_audio_pins.addI2S(PinFunction::CODEC, SPK_I2S_GPIO_MCLK, SPK_I2S_GPIO_BCLK, SPK_I2S_GPIO_WS, SPK_I2S_GPIO_DOUT, SPK_I2S_GPIO_DIN);
     esp_ai_audio_pins.begin();
     esp_ai_audio_board.begin();
-    Serial.println("[Info] mic board begin...");
-    esp_ai_mic_pins.addI2C(PinFunction::CODEC, AUDIO_CODEC_I2C_SCL_PIN, AUDIO_CODEC_I2C_SDA_PIN, AUDIO_CODEC_ES7210_ADDR, AUDIO_CODEC_I2C_SPEED);
+    esp_ai_mic_pins.addI2C(PinFunction::CODEC, AUDIO_CODEC_I2C_SCL_PIN, AUDIO_CODEC_I2C_SDA_PIN, AUDIO_CODEC_ES7210_ADDR, AUDIO_CODEC_I2C_SPEED, mywire);
     esp_ai_mic_pins.addI2S(PinFunction::CODEC, MIC_I2S_GPIO_MCLK, MIC_I2S_GPIO_BCLK, MIC_I2S_GPIO_WS, MIC_I2S_GPIO_DOUT, MIC_I2S_GPIO_DIN);
     esp_ai_mic_pins.begin();
     esp_ai_mic_board.begin();
 
-    Serial.println("[Info] esp_ai_i2s_input begin...");
     // === 配置 I2S + ES8311 ===
-    auto config_spk = esp_ai_spk_i2s.defaultConfig(TX_MODE);
-    config_spk.copyFrom(esp_ai_audio_info);
-    config_spk.sample_rate = 16000;
-    config_spk.channels = 1;
+    auto esp_ai_spk_config = esp_ai_spk_i2s.defaultConfig(TX_MODE);
+    esp_ai_spk_config.copyFrom(esp_ai_audio_info);
+    esp_ai_spk_config.sample_rate = 16000;
+    esp_ai_spk_config.channels = 1;
     esp_ai_spk_queue.begin();
-    esp_ai_dec.begin(config_spk);
-    esp_ai_volume.begin(config_spk);
+    esp_ai_dec.begin(esp_ai_spk_config);
+    esp_ai_volume.begin(esp_ai_spk_config);
     setVolume(1);
-    esp_ai_spk_i2s.begin(config_spk);
-    Serial.println("[Info] esp_ai_i2s_input begin...");
-    // // === 配置 I2S + ES7210 ===
+    esp_ai_spk_i2s.begin(esp_ai_spk_config);
+
+    // === 配置 I2S + ES7210 ===
     auto config_mic = esp_ai_i2s_input.defaultConfig(RX_MODE);
     config_mic.copyFrom(esp_ai_mic_info);
     config_mic.sample_rate = 16000;
@@ -255,7 +265,36 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
     config_mic.channels = 1;
     esp_ai_i2s_input.begin(config_mic);
     mic_to_ws_copier.begin(ws_stream, esp_ai_i2s_input);
+
+    // 7210 用这种方式无效
+    // auto vcfg = esp_ai_mic_volume.defaultConfig();
+    // vcfg.copyFrom(config_mic);
+    // vcfg.allow_boost = true;
+    // esp_ai_mic_volume.begin(vcfg);
+    // esp_ai_mic_volume.setVolume(1000);
 #endif
+
+#if defined(CODEC_TYPE_ES8311_NS4150)
+    pinMode(AUDIO_CODEC_PA_PIN, OUTPUT);
+    digitalWrite(AUDIO_CODEC_PA_PIN, HIGH); // 打开功放
+
+    esp_ai_audio_pins.addI2C(PinFunction::CODEC, AUDIO_CODEC_I2C_SCL_PIN, AUDIO_CODEC_I2C_SDA_PIN, AUDIO_CODEC_ES8311_ADDR, AUDIO_CODEC_I2C_SPEED);
+    esp_ai_audio_pins.addI2S(PinFunction::CODEC, AUDIO_I2S_GPIO_MCLK, AUDIO_I2S_GPIO_BCLK, AUDIO_I2S_GPIO_WS, AUDIO_I2S_GPIO_DOUT, AUDIO_I2S_GPIO_DIN);
+    esp_ai_audio_pins.begin();
+    esp_ai_audio_board.begin();
+
+    // === 配置 I2S + ES8311 ===
+    auto esp_ai_spk_config = esp_ai_spk_i2s.defaultConfig(TX_MODE);
+    esp_ai_spk_config.copyFrom(esp_ai_audio_info);
+    esp_ai_spk_config.sample_rate = 16000;
+    esp_ai_spk_config.channels = 1;
+    esp_ai_spk_queue.begin();
+    esp_ai_dec.begin(esp_ai_spk_config);
+
+    esp_ai_volume.begin(esp_ai_spk_config);
+    setVolume(1);
+#endif
+
     play_audio_ctx.available = []()
     { return esp_ai_spk_queue.available(); };
     play_audio_ctx.copy = []()
@@ -274,6 +313,11 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
     play_audio_ctx.esp_ai_ws_connected = &esp_ai_ws_connected;
     play_audio_ctx.esp_ai_session_id = &esp_ai_session_id;
     xTaskCreateStatic(play_audio_task_static, "play_audio", PLAY_AUDIO_TASK_SIZE, &play_audio_ctx, 1, playAudioTaskStack, &playAudioTaskBuffer);
+
+    // 解决 IDF 短写问题
+    int16_t silence[1152] = {0};
+    esp_ai_spk_i2s.write((uint8_t *)silence, sizeof(silence));
+    esp_ai_spk_i2s.write((uint8_t *)silence, sizeof(silence));
 
     // 内置状态处理
     status_change("0");
@@ -303,9 +347,10 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
         not_wifi_info = false;
     }
 #else
-    // 依次读取 5 组 wifi 信息
-    String loc_wifi_name[5] = {"", "", "", "", ""};
-    String loc_wifi_pwd[5] = {"", "", "", "", ""};
+    // 依次读取 3 组 wifi 信息
+    String loc_wifi_name[3] = {"", "", ""};
+    String loc_wifi_pwd[3] = {"", "", ""};
+
     JSONVar data = get_local_all_data();
     JSONVar keys = data.keys();
     for (int i = 0; i < keys.length(); i++)
@@ -325,14 +370,14 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
             {
                 loc_wifi_name[2] = (const char *)data[key];
             }
-            if (key == "wifi_name4")
-            {
-                loc_wifi_name[3] = (const char *)data[key];
-            }
-            if (key == "wifi_name5")
-            {
-                loc_wifi_name[4] = (const char *)data[key];
-            }
+            // if (key == "wifi_name4")
+            // {
+            //     loc_wifi_name[3] = (const char *)data[key];
+            // }
+            // if (key == "wifi_name5")
+            // {
+            //     loc_wifi_name[4] = (const char *)data[key];
+            // }
             if (key == "wifi_pwd")
             {
                 loc_wifi_pwd[0] = (const char *)data[key];
@@ -345,21 +390,21 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
             {
                 loc_wifi_pwd[2] = (const char *)data[key];
             }
-            if (key == "wifi_pwd4")
-            {
-                loc_wifi_pwd[3] = (const char *)data[key];
-            }
-            if (key == "wifi_pwd5")
-            {
-                loc_wifi_pwd[4] = (const char *)data[key];
-            }
+            // if (key == "wifi_pwd4")
+            // {
+            //     loc_wifi_pwd[3] = (const char *)data[key];
+            // }
+            // if (key == "wifi_pwd5")
+            // {
+            //     loc_wifi_pwd[4] = (const char *)data[key];
+            // }
 
             DEBUG_PRINT(debug, "[Info] 本地数据 " + key + " :");
             DEBUG_PRINTLN(debug, (const char *)data[key]);
         }
     }
 
-    for (int i = 0; i < 5; i++)
+    for (int i = 0; i < 3; i++)
     {
         if (loc_wifi_name[i] != "") // ssid 不能为空
         {
@@ -428,7 +473,14 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
 #endif
 
     play_builtin_audio(lian_jie_zhong, lian_jie_zhong_len);
-    awaitPlayerDone();
+
+// test...
+#if defined(USE_4G_MODULE)
+    esp_ai_webSocket.begin();
+#else
+
+    DEBUG_PRINTLN(debug, F("[Info] connect wifi ing.."));
+    long start_wifi_t = millis();
 
     WiFi.disconnect(true);
     delay(100);
@@ -461,39 +513,31 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
     }
 
 #else
-    for (int i = 0; i < 5; i++)
-    {
-        if (loc_wifi_name[i] != "") // ssid 不能为空
-        {
-            DEBUG_PRINTLN(debug, "[Info] 连接 WIFI" + String(i + 1) + ": " + loc_wifi_name[i]);
-            DEBUG_PRINTLN(debug, "[Info] WIFI" + String(i + 1) + " 密码: " + loc_wifi_pwd[i]);
-            wifiMulti.addAP(loc_wifi_name[i].c_str(), loc_wifi_pwd[i].c_str());
-        }
-    }
 
-    DEBUG_PRINT(debug, F("[Info] connect wifi ing.."));
-
-    // 等待 5 秒
-    if (wifiMulti.run(5000) != WL_CONNECTED)
+    // 遍历你的 WiFi 列表，逐个尝试连接
+    for (int i = 0; i < 3; i++)
     {
-        // 内置状态处理
-        status_change("0_ing");
-        if (onNetStatusCb != nullptr)
+        if (loc_wifi_name[i] != "")
         {
-            esp_ai_net_status = "0_ing";
-            onNetStatusCb("0_ing");
+            DEBUG_PRINTLN(debug, "[Info] 尝试连接 WiFi" + String(i + 1) + ": " + loc_wifi_name[i]);
+            WiFi.begin(loc_wifi_name[i].c_str(), loc_wifi_pwd[i].c_str());
+            unsigned long start = millis();
+            while (WiFi.status() != WL_CONNECTED && millis() - start < 2500)
+            { // 最多等2秒
+                delay(50);
+            }
+
+            if (WiFi.status() == WL_CONNECTED)
+            {
+                DEBUG_PRINTLN(debug, "[Info] WiFi连接成功: " + loc_wifi_name[i]);
+                DEBUG_PRINTLN(debug, "[Info] IP地址: " + WiFi.localIP().toString());
+                break; // 已连接，退出循环
+            }
+            else
+            {
+                DEBUG_PRINTLN(debug, "[Warn] 连接失败，尝试下一个 WiFi");
+            }
         }
-        DEBUG_PRINT(debug, ".");
-        delay(250);
-        // 内置状态处理
-        status_change("0_ing_after");
-        // 设备状态回调
-        if (onNetStatusCb != nullptr)
-        {
-            esp_ai_net_status = "0_ing";
-            onNetStatusCb("0_ing_after");
-        }
-        DEBUG_PRINTLN(debug, F("\n[Error] 连接WIFI失败，请重新配网"));
     }
 
 #endif
@@ -517,6 +561,8 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
         return;
     }
 
+    DEBUG_PRINT(debug, F("[Info] wifi 连接成功, 耗时: "));
+    DEBUG_PRINTLN(debug, millis() - start_wifi_t);
 
     esp_ai_played_connected = false;
     // 内置状态处理
@@ -527,20 +573,116 @@ void ESP_AI::begin(ESP_AI_CONFIG config)
         esp_ai_net_status = "2";
         onNetStatusCb("2");
     }
-    
-    play_builtin_audio(lian_jie_cheng_gong, lian_jie_cheng_gong_len);
-    awaitPlayerDone();
-    play_builtin_audio(fu_wu_lian_jie_zhong, fu_wu_lian_jie_zhong_len);
 
     WiFi.setSleep(false);
-
-    DEBUG_PRINTLN(debug, "");
-    DEBUG_PRINT(debug, F("[Info] wifi 连接成功。"));
     String ip_str = WiFi.localIP().toString();
     if (onConnectedWifiCb != nullptr)
     {
         onConnectedWifiCb(ip_str);
     }
+#endif
+
+    //     DEBUG_PRINTLN(debug, F("[Info] connect wifi ing.."));
+    //     long start_wifi_t = millis();
+
+    //     WiFi.disconnect(true);
+    //     delay(100);
+    //     WiFi.mode(WIFI_STA);
+    // #if defined(LITTLE_ROM)
+    //     WiFi.begin(loc_wifi_name[0], loc_wifi_pwd[0]);
+    //     int connect_count = 0;
+    //     // 10s 连不上Wifi的话
+    //     int try_count = 15;
+    //     while (WiFi.status() != WL_CONNECTED && connect_count <= try_count)
+    //     {
+    //         connect_count++;
+    //         // 内置状态处理
+    //         status_change("0_ing");
+    //         if (onNetStatusCb != nullptr)
+    //         {
+    //             esp_ai_net_status = "0_ing";
+    //             onNetStatusCb("0_ing");
+    //         }
+    //         delay(250);
+    //         DEBUG_PRINT(debug, "."); // 设备状态回调
+    //         // 内置状态处理
+    //         status_change("0_ing_after");
+    //         if (onNetStatusCb != nullptr)
+    //         {
+    //             esp_ai_net_status = "0_ing";
+    //             onNetStatusCb("0_ing_after");
+    //         }
+    //         delay(250);
+    //     }
+
+    // #else
+
+    //     // 遍历你的 WiFi 列表，逐个尝试连接
+    //     for (int i = 0; i < 3; i++)
+    //     {
+    //         if (loc_wifi_name[i] != "")
+    //         {
+    //             DEBUG_PRINTLN(debug, "[Info] 尝试连接 WiFi" + String(i + 1) + ": " + loc_wifi_name[i]);
+    //             WiFi.begin(loc_wifi_name[i].c_str(), loc_wifi_pwd[i].c_str());
+    //             unsigned long start = millis();
+    //             while (WiFi.status() != WL_CONNECTED && millis() - start < 2500)
+    //             { // 最多等2秒
+    //                 delay(50);
+    //             }
+
+    //             if (WiFi.status() == WL_CONNECTED)
+    //             {
+    //                 DEBUG_PRINTLN(debug, "[Info] WiFi连接成功: " + loc_wifi_name[i]);
+    //                 DEBUG_PRINTLN(debug, "[Info] IP地址: " + WiFi.localIP().toString());
+    //                 break; // 已连接，退出循环
+    //             }
+    //             else
+    //             {
+    //                 DEBUG_PRINTLN(debug, "[Warn] 连接失败，尝试下一个 WiFi");
+    //             }
+    //         }
+    //     }
+
+    // #endif
+
+    //     if (WiFi.status() != WL_CONNECTED)
+    //     {
+    //         if (wifi_config.way == "BLE")
+    //         {
+    // #if !defined(DISABLE_BLE_NET)
+    //             open_ble_server();
+    // #endif
+    //         }
+    //         else
+    //         {
+
+    // #if !defined(DISABLE_AP_NET)
+    //             open_ap();
+    // #endif
+    //         }
+    //         play_builtin_audio(lian_jie_shi_bai, lian_jie_shi_bai_len);
+    //         return;
+    //     }
+
+    //     DEBUG_PRINT(debug, F("[Info] wifi 连接成功, 耗时: "));
+    //     DEBUG_PRINTLN(debug, millis() - start_wifi_t);
+
+    //     esp_ai_played_connected = false;
+    //     // 内置状态处理
+    //     status_change("2");
+    //     // 设备状态回调
+    //     if (onNetStatusCb != nullptr)
+    //     {
+    //         esp_ai_net_status = "2";
+    //         onNetStatusCb("2");
+    //     }
+
+    //     WiFi.setSleep(false);
+    //     String ip_str = WiFi.localIP().toString();
+    //     if (onConnectedWifiCb != nullptr)
+    //     {
+    //         onConnectedWifiCb(ip_str);
+    //     }
 
 #if defined(CODEC_TYPE_BLAMP_I2S)
     if (mic_i2s_init(16000))
