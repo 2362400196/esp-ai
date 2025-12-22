@@ -113,8 +113,6 @@ async function fn({ device_id }) {
             return log.error(`请配置 tts_server、tts_config 参数。`)
         }
 
-
-
         devLog && log.info(`---------------------------------------------------`);
         devLog && log.t_info(`客户端连接成功：${device_id}`);
         devLog && log.t_info(`客户端版本号：v${client_version}`);
@@ -169,10 +167,12 @@ async function fn({ device_id }) {
         // }, 2000)
         // return; 
 
+        // // test...
         // await TTS_FN(device_id, {
         //     session_id: "0010",
-        //     // text: "好的好的，连接成功了。",
-        //     text: "小米从创立之初就非常重视与用户的互动。我们有一个专门的论坛，用户可以在那里提出建议和反馈。有一次，一位米粉在论坛上发帖，哈哈哈哈。",
+        //     // text: "好的好的。",
+        //     text: "好的好的，连接成功了。",
+        //     // text: "小米从创立之初就非常重视与用户的互动。我们有一个专门的论坛，用户可以在那里提出建议和反馈。有一次，一位米粉在论坛上发帖，哈哈哈哈。",
         //     // text: `<speak>一匹马受了惊吓<soundEvent src="http://nls.alicdn.com/sound-event/horse-neigh.wav"/>人们四散躲避</speak>`, 
         //     text_is_over: true,
         // })  

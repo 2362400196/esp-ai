@@ -44,8 +44,8 @@ const { PassThrough } = require('stream');
  * @param {Function}    log                 为保证日志输出的一致性，请使用 log 对象进行日志输出，eg: log.error("错误信息")、log.info("普通信息")、log.tts_info("tts 专属信息")
 */
 function TTS_FN({ text, devLog, tts_config, logWSServer, tts_params_set, cb, log, ttsServerErrorCb, connectServerCb, connectServerBeforeCb }) {
-    try {
-        const { url = 'https://api.espai2.fun/ai_api/tts', reference_id = "cosyvoice-v2-espai-ad258e829c08424db6ce59ac7a38b417", api_key, ...other_config } = tts_config;
+    try { 
+        const { url = 'https://api.espai2.fun/ai_api/tts', reference_id = "cosyvoice-v2-espai-ad258e829c08424db6ce59ac7a38b417", api_key, ...other_config } = tts_config; 
         if (!api_key) return log.error(`请配给 TTS 配置 api_key 参数。`)
         if (!url) return log.error(`请配给 TTS 配置 url 参数。`);
         let shouldClose = false;
@@ -60,7 +60,7 @@ function TTS_FN({ text, devLog, tts_config, logWSServer, tts_params_set, cb, log
                 connectServerBeforeCb(); 
                 const response = await axios.post(url, {
                     ...data,
-                    text: text,
+                    text: text, 
                     api_key: api_key
                 }, {
                     headers: {
@@ -79,10 +79,10 @@ function TTS_FN({ text, devLog, tts_config, logWSServer, tts_params_set, cb, log
                 const audioStream = response.data;
                 const stream = new PassThrough();
                 audioStream.pipe(stream);
-                stream.on('data', (chunk) => {
+                stream.on('data', (chunk) => { 
                     cb({ is_over: false, audio: chunk, ws });
                 })
-                stream.on('end', () => {
+                stream.on('end', () => { 
                     cb({ is_over: true, audio: "", ws });
                     connectServerCb(false);
                 });

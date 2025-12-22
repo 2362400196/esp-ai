@@ -71,10 +71,10 @@ async function cb({ device_id, is_over, audio, ws, tts_task_id, session_id, text
             devLog && log.tts_info('-> TTS 片段转换完毕');
             ws.close && ws.close();
             tts_list.delete(tts_task_id);
-            function sendEndBuffer() {
+            function sendEndBuffer() { 
                 audio_sender.sendAudio(null, G_session_ids["tts_all_end"]);
             }
-            function sendEndAlignBuffer() {
+            function sendEndAlignBuffer() {  
                 audio_sender.sendAudio(null, G_session_ids["tts_all_end_align"]);
             }
 
@@ -97,7 +97,7 @@ async function cb({ device_id, is_over, audio, ws, tts_task_id, session_id, text
                         sendEndBuffer();
                     }
                 })
-            } else {
+            } else {  
                 // 文本没有结束，发送 chunk 标识
                 audio_sender.sendAudio(null, G_session_ids["tts_chunk_end"]);
             }
@@ -144,9 +144,9 @@ function TTSFN(device_id, opts) {
                     if(text.replace(punctuationRegex, "") === "")return true;
                 }
                 if (is_create_cache) {
-                    devLog && log.tts_info('-> 开始缓存TTS: ', text);
+                    devLog === 2 && log.tts_info('-> 开始缓存TTS: ', tts_task_id,  text);
                 } else {
-                    devLog && log.tts_info('-> 开始请求TTS: ', text);
+                    devLog === 2 && log.tts_info('-> 开始请求TTS: ', tts_task_id,  text);
                 }
 
                 const audio_sender = new Audio_sender(ws_client, device_id);

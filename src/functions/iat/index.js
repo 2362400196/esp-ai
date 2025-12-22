@@ -31,10 +31,10 @@ const log = require("../../utils/log");
 
 const { clear_sid } = require("../device_fns");
 const VAD = require("node-vad");
-const ffmpeg = require('fluent-ffmpeg');
-const { PassThrough } = require('stream');
+// const ffmpeg = require('fluent-ffmpeg');
+// const { PassThrough } = require('stream');
 
-async function cb({ device_id, text }) {
+async function cb({ device_id, text, iat_server }) {
     try {
         const { onIATcb, onSleep } = G_config;
         const LLM_FN = require(`../llm`);
@@ -47,7 +47,8 @@ async function cb({ device_id, text }) {
         }))
 
         onIATcb && onIATcb({
-            device_id, text, ws: ws_client,
+            device_id, text, iat_server,
+            ws: ws_client,
             instance: G_Instance,
             sendToClient: (_text) => ws_client && ws_client.send(JSON.stringify({
                 type: "instruct",
@@ -83,16 +84,15 @@ module.exports = async (device_id, connected_cb) => {
     try {
         const TTS_FN = require(`../tts`);
         const { devLog, plugins = [], onIAT, onSleep, vad_first, vad_course, vad_course_webrtc, api_key: g_api_key, ai_server } = G_config;
-        const { ws: ws_client, api_key: user_api_key, session_id, error_catch, user_config: { iat_server, llm_server, tts_server, iat_config }, client_params = {} } = G_devices.get(device_id)
+        const { ws: ws_client, session_id, error_catch, user_config: { iat_server, llm_server, tts_server, iat_config }, client_params = {} } = G_devices.get(device_id)
 
         const mic_format = client_params?.mic_format || "pcm";
         const need_vad = mic_format === "pcm";
 
-        const api_key = user_api_key || g_api_key;
-        let prev_asr_text = ""; // 上一次识别出来的文字  
+        let prev_asr_text = ""; // 上一次识别出来的文字
         let prev_asr_time = 0;
         let vad_ended = false;     // vad 结束
-        let asr_timeouter = null;     // vad 结束 
+        let asr_timeouter = null;     // vad 结束
         let done_timer = null;
 
         let prev_speech_time = null;
@@ -157,7 +157,10 @@ module.exports = async (device_id, connected_cb) => {
                 }));
 
                 const LLM_FN = require(`../llm`);
-                LLM_FN(device_id, { is_pre_connect: true })
+                LLM_FN(device_id, { is_pre_connect: true });
+
+                // 开始预连接 LLM 和 TTS 服务
+                // ...
             } else {
                 if (!G_devices.get(device_id)) return;
                 clearTimeout(asr_timeouter);
@@ -302,7 +305,7 @@ module.exports = async (device_id, connected_cb) => {
             iat_config: iat_config,
             devLog,
             iat_server, llm_server, tts_server,
-            cb: (arg) => cb({ ...arg, device_id }),
+            cb: (arg) => cb({ ...arg, device_id, iat_server }),
             iatServerErrorCb,
             logWSServer,
             connectServerBeforeCb,

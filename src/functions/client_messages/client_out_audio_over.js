@@ -40,7 +40,10 @@ async function fn({ device_id, tts_task_id, session_id, session_status }) {
         }
 
         // 音频播放结束 
-        G_devices.set(device_id, { ...G_devices.get(device_id), play_audio_ing: false });
+        G_devices.set(device_id, {
+            ...G_devices.get(device_id), play_audio_ing: false, 
+            started: false  
+        });
     }
 
     if (session_status === G_session_ids["tts_all_end"]) {

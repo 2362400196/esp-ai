@@ -30,7 +30,7 @@
 const log = require("../../utils/log");
 const axios = require('axios');
 
-async function sendTextToClient(device_id, ttsText, user_text, texts, is_over, llm_historys, ws_client, G_Instance) {
+async function sendTextToClient(device_id, ttsText, user_text, texts, is_over, llm_historys, ws_client, G_Instance, llm_server) {
     if (!G_config.onLLMcb) return;
     // 创建一个专门用于跟踪WebSocket发送状态的Promise
     let resolveWebSocketSend;
@@ -84,6 +84,7 @@ async function sendTextToClient(device_id, ttsText, user_text, texts, is_over, l
         user_text,
         llm_text: texts.count_text,
         is_over,
+        llm_server,
         llm_historys,
         ws: ws_client,
         instance: G_Instance,
@@ -97,29 +98,16 @@ async function sendTextToClient(device_id, ttsText, user_text, texts, is_over, l
 /**
  * 接下来的 session_id 都当前形参为准
 */
-async function cb(device_id, { text, user_text, is_over, texts, chunk_text, session_id }) {
+async function cb(device_id, { text, user_text, is_over, texts, chunk_text, session_id, llm_server }) {
     try {
         const { devLog, onLLMcb, llm_qa_number, ai_server } = G_config;
         if (!G_devices.get(device_id)) return;
         const TTS_FN = require(`../tts`);
-        const { llm_historys = [], ws: ws_client, llm_ws, tts_buffer_chunk_queue } = G_devices.get(device_id);
+        const { llm_historys = [], ws: ws_client, llm_ws, tts_buffer_chunk_queue, user_config: { tts_config, api_key }, error_catch } = G_devices.get(device_id);
         if (!texts.index) {
             texts.index = 0;
         }
-
-        // onLLMcb && onLLMcb({
-        //     device_id,
-        //     text: chunk_text,
-        //     user_text,
-        //     llm_text: texts.count_text,
-        //     is_over, llm_historys, ws: ws_client,
-        //     instance: G_Instance,
-        //     sendToClient: (_chunk_text) => ws_client && ws_client.send(JSON.stringify({
-        //         type: "instruct",
-        //         command_id: "on_llm_cb",
-        //         data: _chunk_text || chunk_text
-        //     }))
-        // });
+        let task_index = texts.index;
 
         // 截取TTS算法需要累计动态计算每次应该取多少文字转TTS，而不是固定每次取多少
         const notPlayText = texts.count_text.substr(texts.all_text.length);
@@ -127,14 +115,31 @@ async function cb(device_id, { text, user_text, is_over, texts, chunk_text, sess
             devLog && log.llm_info('-> LLM 推理完毕');
             llm_ws && llm_ws.close()
             // 最后在检查一遍确认都 tts 了，因为最后返回的字数小于播放阈值可能不会被播放，所以这里只要不是空的都需要播放
-            const { speak_text: ttsText = "", org_text = "" } = extractBeforeLastPunctuation(notPlayText, true, 0)
+            const { speak_text: ttsText = "", org_text = "" } = extractBeforeLastPunctuation(notPlayText, true, 0, tts_config?.enable_ssml)
             // ttsText && sendEmotion({ device_id, text: ttsText, ai_server, ws_client });
             const textNowNull = ttsText.replace(/\s/g, '') !== "";
 
-
             if (textNowNull && (ttsText.replace(/\s/g, '')).replace(/[,;!?()<>"‘”《》’!?【】。、，；！？（）”’…~～]?/g, "") !== "") {
+
+                let ssmlText = ttsText;
+                // 首句不参与 ssml
+                if (tts_config?.enable_ssml && task_index !== 0) {
+                    // SSML 标签
+                    const ssmlServerRes = await axios.post(`${ai_server}/ai_api/text_add_SSML`, {
+                        "api_key": api_key,
+                        "text": ttsText
+                    }, { headers: { 'Content-Type': 'application/json' } });
+                    const ssmlRes = ssmlServerRes.data;
+                    if (ssmlRes.success) {
+                        ssmlText = ssmlRes.data;
+                    } else {
+                        error_catch("LLM", ssmlRes.code, ssmlRes.message);
+                        log.error(`SSML 标签增加失败：`, ssmlRes)
+                    }
+                }
+
                 // 添加音频播放任务
-                tts_buffer_chunk_queue && tts_buffer_chunk_queue.push(async () => {
+                tts_buffer_chunk_queue && tts_buffer_chunk_queue.push(task_index, async () => {
                     // 1. 先执行情绪下发，异步发送
                     ttsText && sendEmotion({ device_id, text: ttsText, ai_server, ws_client });
                     // 2. 等待文字下发完成
@@ -146,11 +151,12 @@ async function cb(device_id, { text, user_text, is_over, texts, chunk_text, sess
                         is_over,
                         llm_historys,
                         ws_client,
-                        G_Instance
+                        G_Instance,
+                        llm_server
                     );
                     // 3. 文字下发完成后，执行TTS
                     return await TTS_FN(device_id, {
-                        text: ttsText,
+                        text: ssmlText,
                         pauseInputAudio: true,
                         session_id,
                         text_is_over: true,
@@ -162,7 +168,7 @@ async function cb(device_id, { text, user_text, is_over, texts, chunk_text, sess
                 /**
                  * 特殊结束任务，当最后一次 TTS 没有文字是将走这里进行结束
                 */
-                tts_buffer_chunk_queue && tts_buffer_chunk_queue.push(() => {
+                tts_buffer_chunk_queue && tts_buffer_chunk_queue.push(task_index, () => {
                     G_Instance.awaitIntention(device_id, () => {
                         if (!G_devices.get(device_id)) return;
                         const { stop_next_session } = G_devices.get(device_id);
@@ -212,15 +218,32 @@ async function cb(device_id, { text, user_text, is_over, texts, chunk_text, sess
             }));
         }
         else {
-            const { speak_text: ttsText = "", org_text = "" } = extractBeforeLastPunctuation(notPlayText, false, texts.index);
-            // ttsText && sendEmotion({ device_id, text: ttsText, ai_server, ws_client });
+            const { speak_text: ttsText = "", org_text = "" } = extractBeforeLastPunctuation(notPlayText, false, texts.index, tts_config?.enable_ssml);
+            let ssmlText = ttsText;
+
             if (ttsText) {
-                devLog && log.llm_info('客户端播放：', ttsText);
+                devLog === 2 && log.llm_info('客户端播放：', ttsText);
+
                 texts.all_text += org_text;
                 texts.index += 1;
 
+                if (tts_config?.enable_ssml && task_index !== 0) {
+                    // SSML 标签
+                    const ssmlServerRes = await axios.post(`${ai_server}/ai_api/text_add_SSML`, {
+                        "api_key": api_key,
+                        "text": ttsText
+                    }, { headers: { 'Content-Type': 'application/json' } });
+                    const ssmlRes = ssmlServerRes.data;
+                    if (ssmlRes.success) {
+                        ssmlText = ssmlRes.data;
+                    } else {
+                        error_catch("LLM", ssmlRes.code, ssmlRes.message);
+                        log.error(`SSML 标签增加失败：`, ssmlRes)
+                    }
+                }
+
                 // 添加任务
-                tts_buffer_chunk_queue && tts_buffer_chunk_queue.push(async () => {
+                tts_buffer_chunk_queue && tts_buffer_chunk_queue.push(task_index, async () => {
                     // 1. 先执行情绪下发，异步发送
                     ttsText && sendEmotion({ device_id, text: ttsText, ai_server, ws_client });
                     // 2. 等待文字下发完成
@@ -232,11 +255,12 @@ async function cb(device_id, { text, user_text, is_over, texts, chunk_text, sess
                         is_over,
                         llm_historys,
                         ws_client,
-                        G_Instance
+                        G_Instance,
+                        llm_server
                     );
                     // 3. 文字下发完成后，执行TTS
                     return await TTS_FN(device_id, {
-                        text: ttsText,
+                        text: ssmlText,
                         pauseInputAudio: true,
                         session_id,
                         text_is_over: false,
@@ -244,7 +268,6 @@ async function cb(device_id, { text, user_text, is_over, texts, chunk_text, sess
                     })
                 })
             }
-
         }
     } catch (err) {
         console.log(err);
@@ -261,7 +284,7 @@ async function cb(device_id, { text, user_text, is_over, texts, chunk_text, sess
  *  2. 一些特殊符号不用念出来
  *  3. 部分非停顿符号不要，还需要注意数学中的小数点
 */
-function extractBeforeLastPunctuation(str, isLast, index) {
+function extractBeforeLastPunctuation(str, isLast, index, enable_ssml) {
     // 匹配句子结束的标点，包括中英文，并考虑英文句号后的空格
     const punctuationRegex = /[。，！？!?；;！？…~～]|(?<![A-Za-z0-9])\.(?![A-Za-z0-9])|(?<![A-Za-z])'(?![A-Za-z])/g;
     const matches = [...str.matchAll(punctuationRegex)];
@@ -276,8 +299,10 @@ function extractBeforeLastPunctuation(str, isLast, index) {
     if (lastIndex || lastIndex === 0) {
         const res = str.substring(0, lastIndex + 1);
         // 首包字数过低会导致低码率设备卡顿
-        // const min_len = (index <= 1 ? 1 : Math.min(index * 30, 100));
-        const min_len = (index <= 1 ? 5 : Math.min(index * 30, 100));
+        let min_len = (index <= 1 ? 5 : Math.min(index * 40, 200));
+        if (enable_ssml) {
+            min_len = (index <= 1 ? 5 : Math.min(index * 50, 300));
+        }
         if ((res.length < min_len) && !isLast) {
             return {}
         }
@@ -300,7 +325,7 @@ module.exports = (device_id, opts) => {
         const { devLog, plugins = [], llm_params_set, onLLM } = G_config;
         const {
             llm_historys = [],
-            ws: ws_client, session_id, error_catch, intention_prompt = [],
+            ws: ws_client, session_id, error_catch, intention_prompt = [], tts_buffer_chunk_queue,
             user_config: { iat_server, llm_server, tts_server, llm_config, llm_init_messages = [] }
         } = G_devices.get(device_id);
 
@@ -312,9 +337,9 @@ module.exports = (device_id, opts) => {
         /**
          * llm 服务发生错误时调用
         */
-        const llmServerErrorCb = (err) => {
-            log.error(err)
-            error_catch("LLM", "202", err);
+        const llmServerErrorCb = (err, code) => {
+            log.error(`${code}, ${err}`)
+            error_catch("LLM", code || "202", err);
 
             TTS_FN(device_id, {
                 text: "大语言模型服务发生错误",
@@ -378,7 +403,8 @@ module.exports = (device_id, opts) => {
         const connectServerCb = (connected) => {
             if (connected) {
                 if (!G_devices.get(device_id)) return;
-                devLog && log.llm_info("-> LLM 服务连接成功！")
+                devLog && log.llm_info("-> LLM 服务连接成功！");
+                tts_buffer_chunk_queue?.clear?.();
                 G_devices.set(device_id, {
                     ...G_devices.get(device_id),
                     llm_server_connected: true,
@@ -423,7 +449,7 @@ module.exports = (device_id, opts) => {
             llmServerErrorCb,
             connectServerBeforeCb,
             connectServerCb,
-            cb: (args) => cb(device_id, { ...args, user_text: text, session_id })
+            cb: (args) => cb(device_id, { ...args, user_text: text, session_id, llm_server })
         })
     } catch (err) {
         console.log(err);

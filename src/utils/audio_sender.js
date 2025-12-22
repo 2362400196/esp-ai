@@ -45,6 +45,7 @@ class Audio_sender {
         this.check_count = 0;
         this.started = false;
         this.stoped = false;
+        this.writeed = false;
         this.stop_rec_audioed = false; // 已经停止接收音频
         this.device_id = device_id;
         this.client_version_arr = client_version_arr;
@@ -60,6 +61,7 @@ class Audio_sender {
         // 音频保存配置(默认关闭)
         this.audioSaver = new AudioSaver(device_id);
         this.audioSaver.toggle(false); // 设置为true，开启保存音频文件（仅当保存功能启用时）
+        // this.audioSaver.toggle(true); // 设置为 true ，开启保存音频文件（仅当保存功能启用时）
 
         // 静音处理配置（头部60ms，尾部180ms，平衡间隔与流畅度）
         this.silenceConfig = {
@@ -94,13 +96,11 @@ class Audio_sender {
                 .audioCodec(this.getCodecForFormat(this.format))    // 编码为 MP3（可改为 libopus、adpcm_ima_wav 等）
                 .audioBitrate(this.bitrate)            // 比特率
                 .format(this.format)
-                // .addOption('-q:a', '9')               // 最低质量（输出更快）
-                // .addOption('-fflags', 'nobuffer')     // 减少内部缓冲
-                // .addOption('-compression_level', '0')
-                // .on('error', err => {  console.error('FFmpeg error:', err.message);  })
                 // 关键：监听错误事件（避免错误导致进程挂起）
                 .on('error', (err) => {
-                    log.error('FFmpeg 错误:' + err.message);
+                    if (err.message !== "Output stream closed") {
+                        log.error('FFmpeg 错误:' + err.message);
+                    }
                     // 发生错误时主动终止子进程，防止僵尸进程
                     if (ffmpegProcess && !ffmpegProcess.killed && this.ffmpegProcess.kill) {
                         ffmpegProcess.kill('SIGKILL');
@@ -214,10 +214,13 @@ class Audio_sender {
                 }
 
                 // test...
-                // log.tts_info("::: 发送-> 会话ID: ", session_id, " 会话状态:", ss, " 数据长度:", data_len, " 客户端有效音频:", Math.floor(client_available_audio / 1024) + "kb", "  send_speed：", send_speed, `最后字节：${real_data[data_len - 1] ||''}`);
+                // log.tts_info("::: 发送-> 会话ID: ", session_id, " 会话状态:", ss, " 数据长度:", data_len, " 客户端有效音频:", Math.floor(client_available_audio / 1024) + "kb", "  send_speed：", send_speed, `最后字节：${real_data[data_len - 1] || ''}`);
+                // console.log(real_data);
+                
                 if (!session_id) return log.error(`缺失会话ID，发送失败。`);
 
                 const combinedBuffer = Buffer.concat([Buffer.from(session_id, 'utf-8'), Buffer.from(ss, 'utf-8'), real_data]);
+                // console.log(combinedBuffer); // test...
                 this.ws.send(combinedBuffer, () => {
                     if (is_end) {
                         clearTimeout(this.send_timer);
@@ -260,7 +263,12 @@ class Audio_sender {
                 this.accumulated_data = Buffer.concat([this.accumulated_data, Buffer.from(status, 'utf-8')]);
             } else {
                 this.end_ss = status;
-                this.inputStream.end();
+                if (this.writeed) {
+                    this.inputStream.end();
+                } else {
+                    // 说明TTS 服务可能除了问题，这句话没有被转换出来，但是也必须结束，否则整个对话流程将会被卡死
+                    this.accumulated_data = Buffer.concat([this.accumulated_data, Buffer.from(this.end_ss || '', 'utf-8')]);
+                }
             }
         } else {
             if (stream_chunk?.length === 0) return;
@@ -268,6 +276,7 @@ class Audio_sender {
             if (this.not_need_process_data) {
                 this.accumulated_data = Buffer.concat([this.accumulated_data, stream_chunk]);
             } else {
+                this.writeed = true;
                 this.inputStream.write(stream_chunk);
             }
         }

@@ -44,7 +44,7 @@ const { v4: uuidv4 } = require('uuid');
  * @param {Function}    cb                  TTS 服务返回音频数据时调用，eg: cb({ audio: 音频base64, ... })
  * @param {Function}    log                 为保证日志输出的一致性，请使用 log 对象进行日志输出，eg: log.error("错误信息")、log.info("普通信息")、log.tts_info("tts 专属信息")
 */
- 
+
 function TTS_FN({ device_id, text, devLog, tts_config, logWSServer, tts_params_set, cb, log, ttsServerErrorCb, connectServerCb, connectServerBeforeCb }) {
     try {
         const { appid, accessToken, appConfig = {}, is_clone, ...other_config } = tts_config;
@@ -59,7 +59,7 @@ function TTS_FN({ device_id, text, devLog, tts_config, logWSServer, tts_params_s
             speed_ratio: 1.0,
             pitch_ratio: 1.0,
             ...other_config,
-            encoding: "mp3", 
+            encoding: "mp3",
         }
 
         const curTTSWs = new WebSocket(api_url, { headers: { "Authorization": `Bearer; ${accessToken}` }, perMessageDeflate: false });
@@ -74,13 +74,15 @@ function TTS_FN({ device_id, text, devLog, tts_config, logWSServer, tts_params_s
 
         logWSServer({
             close() {
-                curTTSWs.OPEN && curTTSWs.close();
+                if (curTTSWs.CLOSED !== 3) {
+                    curTTSWs.OPEN && curTTSWs.close();
+                }
             }
         })
- 
-        curTTSWs.on('open', () => { 
-            connectServerCb(true); 
-            send(text) 
+
+        curTTSWs.on('open', () => {
+            connectServerCb(true);
+            send(text)
         })
 
         curTTSWs.on('message', (res, err) => {
@@ -117,10 +119,13 @@ function TTS_FN({ device_id, text, devLog, tts_config, logWSServer, tts_params_s
                 console.log(`          Error message code: ${code}`);
                 console.log(`          Error message size: ${msg_size} bytes`);
                 console.log(`                  Error data: ${text}`);
-                console.log(`               Error message: ${error_msg}`); 
-                log.tts_info(`发送字符串：${text}`);
-                ttsServerErrorCb(`火山 TTS 接口返回错误 ${res.code}: ${res.message} ${error_msg}`)
-                curTTSWs.close()
+                console.log(`               Error message: ${error_msg}`);
+                log.tts_info(`发送字符串：${text}`); 
+                if (error_msg?.indexOf("unsupported language") === -1) {
+                    // 不支持的语言不需要报错
+                    ttsServerErrorCb(`火山 TTS 接口返回错误 ${res.code}: ${res.message} ${error_msg}`)
+                }
+                curTTSWs.OPEN && curTTSWs.close()
                 connectServerCb(false);
                 cb({ is_over: true, audio: "", ws: curTTSWs });
                 return
@@ -135,6 +140,7 @@ function TTS_FN({ device_id, text, devLog, tts_config, logWSServer, tts_params_s
                 done = true;
             }
             cb({ is_over: done, audio: payload, ws: curTTSWs });
+            done && connectServerCb(false);
         })
 
         // 连接错误
@@ -159,8 +165,8 @@ function TTS_FN({ device_id, text, devLog, tts_config, logWSServer, tts_params_s
                 },
                 audio: tts_params_set ? tts_params_set(audio_config) : audio_config,
                 request: {
-                    reqid: uuidv4(),
-                    text: text,
+                    reqid: uuidv4(), 
+                    text: text, 
                     text_type: "plain",
                     operation: "submit"
                 }

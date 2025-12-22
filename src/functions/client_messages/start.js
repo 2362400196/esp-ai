@@ -79,7 +79,8 @@ async function fn({ device_id, _ws }) {
             return;
         }
 
-        const start_iat = async (connect_cb) => {
+        const start_iat = async (connect_cb) => { 
+            
             if (!G_devices.get(device_id)) return;
             await G_Instance.stop(device_id, "打断会话时");
             await G_Instance.newSession(device_id);

@@ -90,7 +90,8 @@ function main(config = {}) {
          *       play_audio_seek: number,
          *
          *       // 指令相关参数
-         *       intention_ing: boolean,
+         *       intention_ing: boolean, // 指令推理中
+         *       intention_exec_ing: boolean, // 指令执行中
          *       stop_ack_fn: () => void,
          *
          *       // 上一次 LLM 的情绪
@@ -143,6 +144,7 @@ function main(config = {}) {
         log.info(`服务端口：${G_config.port}`);
         log.info(`服务插件：${G_config.plugins ? G_config.plugins.map(item => item.name).join(" | ") : "-"}`);
         G_ws_server = init_server();
+ 
 
         return Instance
     } catch (err) {

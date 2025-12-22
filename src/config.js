@@ -40,11 +40,11 @@ const config = {
      * 默认 10000（10s）
     */
     vad_first: 10000,
- 
+
     /**
      * 对话过程中等待用户说话的时间
      * 也就是用户开始说话后等待用户思考的时间，不建议超过 1000 
-    */   
+    */
     // vad_course_webrtc: 550,
     vad_course_webrtc: 800,
     vad_course: 1500,
@@ -52,7 +52,26 @@ const config = {
     /**
      * 用于全局`ESP-AI`的秘钥，在一些需要进行AI服务时使用。
     */
-    ai_server: `https://api.espai.fun`, 
+    ai_server: `https://api.espai.fun`,
+    // test... 
+    // ai_server: `http://192.168.3.16:7002`,
+
+    texts: {
+        "zh-CN": {
+            "music.play_over.reply": "你觉得这首歌曲怎么样？可以和我聊聊你的感受吗？",
+            "music.play.error_404": "您的音乐库中没有查询到这首音乐哦，请检查音乐库中是否有该音乐。",
+            "music_gen.play_over.reply": "歌曲怎么样？可以和我聊聊你的感受吗？",
+            "music_gen.play.error_404": "歌曲创作失败啦，重新试试吧！",
+            "music_gen.play.error_playing": "音频播放出错啦，重新换一首吧！",
+        },
+        "en-US": {
+            "music.play_over.reply": "How do you think about this song? Can we talk about your feelings?",
+            "music.play.error_404": "I can't find this song in your music library. Please check if you have this song in your music library.",
+            "music_gen.play_over.reply": "How do you think about this song? Can we talk about your feelings?",
+            "music_gen.play.error_404": "Music generation failed. Try again.",
+            "music_gen.play.error_playing": "Audio playback error. Please try another song."
+        }
+    },
 
     /**
      * 为了保证服务的灵活，所以 IAT/TTS/LLM 都需要分别配置key。 哪怕都用的讯飞，也需要分别配置。
@@ -83,8 +102,10 @@ const config = {
                 }
             ],
 
+            locale: "zh-CN",
         }
     },
+
 
 }
 

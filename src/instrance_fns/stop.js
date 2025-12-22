@@ -37,6 +37,7 @@ const log = require("../utils/log");
 
 function stop(device_id, at, stop_all) {
     !device_id && log.error(`调用 stop 方法时，请传入 device_id`);
+ 
     // 清空该设备的所有任务
     if (!G_devices.get(device_id)) return;
     return new Promise((resolve) => {
@@ -49,14 +50,17 @@ function stop(device_id, at, stop_all) {
             tts_server_connect_ing, tts_server_connected,
             llm_server_connect_ing, llm_server_connected, abort_controllers = [],
             audio_sender,
-            session_id, client_version_arr
-        } = G_devices.get(device_id);
+            session_id, client_version_arr, intention_exec_ing, intention_ing, started
+        } = G_devices.get(device_id); 
+
         if (
             iat_server_connect_ing || iat_server_connected ||
             tts_server_connect_ing || tts_server_connected ||
             llm_server_connect_ing || llm_server_connected ||
-            client_out_audio_ing || play_audio_ing
-        ) {
+            client_out_audio_ing || play_audio_ing 
+            || intention_ing || intention_exec_ing || started
+        ) { 
+
             abort_controllers.forEach((controller) => controller.abort());
             audio_sender && audio_sender.stop();
 
@@ -69,11 +73,12 @@ function stop(device_id, at, stop_all) {
                         resolve(true);
                     }
                 });
-                ws && ws.send(JSON.stringify({ type: "session_stop", data: stop_all ? "1" : "", session_id }));
+                ws && ws.send(JSON.stringify({ type: "session_stop", data: stop_all ? "1" : "", session_id: session_id || "" }));
             }
             try {
                 G_devices.set(device_id, {
                     ...G_devices.get(device_id),
+                    abort_controllers: [],
                     started: false, // 必须关闭，否则音频流上传时会不断创建定时器
                     stoped: true,
                     first_session: true,
@@ -85,7 +90,7 @@ function stop(device_id, at, stop_all) {
                     play_audio_on_end: null,
                     play_audio_seek: 0,
                 })
-                tts_buffer_chunk_queue.clear();
+                tts_buffer_chunk_queue && tts_buffer_chunk_queue.clear();
                 play_audio_ing && play_audio_on_end && play_audio_on_end("ws_disconnect");
                 if (iat_ws && iat_ws.end) {
                     iat_ws.end()
@@ -101,17 +106,17 @@ function stop(device_id, at, stop_all) {
 
             // 清空正在播放的 tts 任务
             for (const [key, ttsWS] of tts_list) {
-                try {
+                try { 
                     ttsWS && ttsWS.close && ttsWS.close();
                 } catch (err) {
                     log.error(`[${device_id}] ${at} TTS 队列关闭失败：` + err);
                     console.log(err)
                 }
                 tts_list.delete(key)
-            }
+            };
 
             // 旧版兼容，新版不走这里，而是走 ACK，旧版没有 ACK 帧，也不会走 ACK 回调，所以只需要在这里做兼容即可
-            (Number(client_version_arr[0]) <= 2 && Number(client_version_arr[1]) < 86) && resolve(true);
+            client_version_arr && (Number(client_version_arr[0]) <= 2 && Number(client_version_arr[1]) < 86) && resolve(true);
         } else {
             resolve(true);
         }

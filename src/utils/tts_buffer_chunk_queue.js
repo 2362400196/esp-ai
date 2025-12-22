@@ -22,35 +22,45 @@
  * @github https://github.com/wangzongming/esp-ai
  * @websit https://espai.fun
  */
-
-const log = require("./log");
+ 
 class TTS_buffer_chunk_queue {
     constructor(device_id) {
         this.device_id = device_id;
-        this.queue = [];
+        this.queue = new Map([]);
+        this.queueIndex = 0;
         this.stoped = true;
         this.runing = false;
-        this.queue_listen_timer = true; 
-    } 
-    push(args) { 
-        this.queue.push(args);  
-        !this.runing && this.run();
     }
-    async run() {
-        if (!this.queue.length) {
+    push(index, func) {
+        this.queue.set(index, func);
+        !this.runing && this.run(this.queueIndex);
+    }
+    async run(awaitIndex) { 
+        // 等待10s就算超时
+        if (!this.queue.size || awaitIndex > 100) {
             this.stoped = true;
             this.runing = false;
             return;
-        } 
+        }
         this.runing = true;
-        const tts_queue = this.queue.shift(); 
-        await tts_queue(); 
-        this.run(); 
-    } 
-    clear() { 
+
+        const tts_queue = this.queue.get(this.queueIndex);
+        // 如果没有这个任务，说明任务还没就绪，等待 100ms 后继续监听
+        if (!tts_queue) {
+            return setTimeout(() => { this.run(awaitIndex += 1) }, 100);
+        }
+        this.queue.delete(this.queueIndex);
+        await tts_queue();
+        this.run();
+
+        this.queueIndex += 1;
+    }
+    clear() {
+        this.queueIndex = 0;
         this.runing = false;
         this.stoped = true;
-        this.queue = [];
+        this.queue.clear();
     }
 }
 module.exports = TTS_buffer_chunk_queue;
+

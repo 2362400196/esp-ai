@@ -30,13 +30,15 @@ const { t_info } = require("../../utils/log");
 
 async function fn({ device_id, stc_time }) {
     if (!G_devices.get(device_id)) return;
-    const { ws } = G_devices.get(device_id);
+    const { onNetDelay } = G_config;
+    const { ws, client_params = {} } = G_devices.get(device_id);
     const net_delay = (+new Date() - (+stc_time)) / 2;
     t_info(`------------------------------------------------------------------------------`)
     t_info(`客户端 ${device_id} 网络延时：${net_delay}ms`)
     t_info(`------------------------------------------------------------------------------`)
 
-    ws && ws.send(JSON.stringify({ type: "net_delay", net_delay }));
+    onNetDelay && onNetDelay({ device_id, net_delay, api_key: client_params.api_key ||  client_params.ext1 });
+    ws && ws.send(JSON.stringify({ type: "net_delay", net_delay, now: +new Date() }));
 }
 
 module.exports = fn

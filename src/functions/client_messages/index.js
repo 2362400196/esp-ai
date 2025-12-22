@@ -11,6 +11,7 @@ const iat_end = require("./iat_end")
 const reCache = require("./reCache")
 const client_available_audio = require("./client_available_audio")
 const session_stop_ack = require("./session_stop_ack")
+const cron_task = require("./cron_task")
 
 module.exports = {
     audio,
@@ -25,5 +26,6 @@ module.exports = {
     iat_end,
     reCache,
     client_available_audio,
-    session_stop_ack
+    session_stop_ack,
+    cron_task
 }

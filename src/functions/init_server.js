@@ -30,7 +30,7 @@ const isOutTimeErr = require("../utils/isOutTimeErr");
 const TTS_buffer_chunk_queue = require("../utils/tts_buffer_chunk_queue");
 const {
     audio, start, play_audio_ws_conntceed, client_out_audio_ing: client_out_audio_ing_fn, reCache,
-    client_out_audio_over, cts_time, set_wifi_config_res, digitalRead, analogRead, iat_end, client_available_audio, session_stop_ack
+    client_out_audio_over, cts_time, set_wifi_config_res, digitalRead, analogRead, iat_end, client_available_audio, session_stop_ack, cron_task
 } = require("../functions/client_messages");
 const error_catch_hoc = require("./device_fns/error_catch")
 
@@ -66,7 +66,14 @@ function init_server() {
                 }, 5000)
                 return;
             }
-            log.t_info(`[${device_id}] 硬件连接`)
+            log.t_info(`[${device_id}] 硬件连接`);
+
+
+            // test...
+            // 测试发送 ping 控制帧
+            // setTimeout(() => {
+            //     ws.ping();
+            // }, 1000)
 
 
             // 断电重连
@@ -109,10 +116,12 @@ function init_server() {
                 instance: G_Instance
             });
 
-            ws.on('message', async function (data) {
+            // test...
+            // 二进制使用 isBinary 判断
+            ws.on('message', async function (data, isBinary) {
                 const comm_args = { device_id };
 
-                if(!G_devices.get(device_id)){
+                if (!G_devices.get(device_id)) {
                     log.error(`客戶端异常断开，马上进行重启：${device_id}`);
                     ws && ws.close();
                     return;
@@ -180,6 +189,12 @@ function init_server() {
                             case "session_stop_ack":
                                 session_stop_ack(comm_args);
                                 break;
+                            case "session_stop":
+                                G_Instance.stop(device_id, "客户端主动结束", true)
+                                break;
+                            case "cron_task":
+                                cron_task(comm_args);
+                                break;
                         }
                     } else {
                         ws.isAlive = true;
@@ -198,7 +213,7 @@ function init_server() {
             });
 
             ws.on("pong", function () {
-                // console.log("收到 pong")
+                // console.log("收到 pong") // test...
                 this.isAlive = true;
             });
 

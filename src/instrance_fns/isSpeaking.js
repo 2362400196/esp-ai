@@ -22,14 +22,14 @@
  * @github https://github.com/wangzongming/esp-ai
  * @websit https://espai.fun
  */
- 
+
 function isSpeaking(device_id) {
-    try { 
-        if (!G_devices.get(device_id)) return false; 
-        const { play_audio_ing } = G_devices.get(device_id); 
-        return play_audio_ing;
+    try {
+        if (!G_devices.get(device_id)) return false;
+        const { play_audio_ing, tts_server_connected, llm_server_connected, started } = G_devices.get(device_id); 
+        return play_audio_ing || tts_server_connected || llm_server_connected || started;
     } catch (err) {
-        console.log(err); 
+        console.log(err);
         return false;
     }
 }

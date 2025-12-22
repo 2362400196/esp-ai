@@ -54,18 +54,18 @@ function LLM_FN({ devLog, device_id, is_pre_connect, llm_config, text, llmServer
 
         // 预先连接函数
         async function preConnect() {
-            try { 
+            try {
                 const params = {
                     ...other_config,
                     apiKey: apiKey,
                     baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
                 };
-                const openai = new OpenAI(llm_params_set ? llm_params_set({ ...params }) : params); 
-                await openai.chat.completions.create({ 
+                const openai = new OpenAI(llm_params_set ? llm_params_set({ ...params }) : params);
+                await openai.chat.completions.create({
                     messages: [{ "role": "user", "content": "" }],
                     model: epId,
                     stream: false,
-                }); 
+                });
             } catch (error) {
                 log.error('预先连接失败:', error);
             }
@@ -85,16 +85,16 @@ function LLM_FN({ devLog, device_id, is_pre_connect, llm_config, text, llmServer
             index: 0,
         }
 
-        connectServerBeforeCb(); 
+        connectServerBeforeCb();
         const params = {
             ...other_config,
             apiKey: apiKey,
             baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
         };
-        const openai = new OpenAI(llm_params_set ? llm_params_set({ ...params }) : params); 
- 
-        async function main() { 
-            try { 
+        const openai = new OpenAI(llm_params_set ? llm_params_set({ ...params }) : params);
+
+        async function main() {
+            try {
                 const stream = await openai.chat.completions.create({
                     messages: [
                         ...llm_init_messages,
@@ -104,8 +104,8 @@ function LLM_FN({ devLog, device_id, is_pre_connect, llm_config, text, llmServer
                         },
                     ],
                     model: epId,
-                    stream: true,
-                }); 
+                    stream: true, 
+                });
                 connectServerCb(true);
                 logWSServer({
                     close: () => {

@@ -168,6 +168,24 @@ class EspAiInstance {
         const { llm_historys } = G_devices.get(device_id);
         return llm_historys
     }
+
+    /**
+     * 获取国际化语言
+     * @param text_id 文本id
+     * @return text 文本内容
+    */
+    getText(device_id, text_id) {
+        !device_id && log.error(`调用 getText 方法时，请传入 device_id`);
+        !text_id && log.error(`调用 getText 方法时，请传入 text_id`);
+        if (!G_devices.get(device_id)) return;
+        const {  texts } = G_config;
+        const { user_config: { locale = "zh-CN" } } = G_devices.get(device_id); 
+        if (!texts?.[locale]?.[text_id]) {
+            log.error(`没有找到 ${text_id} 对应的文本`);
+            return "";
+        }
+        return texts?.[locale]?.[text_id] || "";
+    }
 }
 
 module.exports = EspAiInstance;

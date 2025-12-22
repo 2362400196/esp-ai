@@ -235,7 +235,28 @@ export interface Config {
         */
         iatDu?: string | boolean;
 
+        /**
+         * 国际化，默认为 zh-CN
+         * @value zh-CN 中文
+         * @value en-US English
+        */ 
+        locale?: "zh-CN" | "en-US" | string;
+
+        /**
+         * 具体的国际化文本覆盖
+         * {
+         *      "zh-CN": {
+         *         "music.play_over.reply": "你觉得这首歌曲怎么样？可以和我聊聊你的感受吗？",
+         *         "music.play.error_404": "您的音乐库中没有查询到这首音乐哦，请检查音乐库中是否有该音乐。",
+         *         "music_gen.play_over.reply": "歌曲怎么样？可以和我聊聊你的感受吗？",
+         *         "music_gen.play.error_404": "歌曲创作失败啦，重新试试吧！",
+         *         "music_gen.play.error_playing": "音频播放出错啦，重新换一首吧！",
+         *      }
+         * }
+        */
+        texts?: Record<string, string>;
     }>;
+
 
 
     /**
@@ -257,6 +278,12 @@ export interface Config {
             ext2: string;
         }
     }) => Promise<{ success: boolean, message?: string }>;
+
+    /**
+     * 拿到设备连接的延迟信息
+     * @net_delay 单位毫秒
+    */
+   onNetDelay?: (arg: { device_id: string, net_delay: number }) => void;
 
     /**
      * llm 参数控制, 可以设置温度等
